@@ -131,3 +131,43 @@ input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit;col
   .revealph .rp{transform:none;filter:none}.pcard.out{animation:none}}
 
 .sstate.low{color:var(--gold)!important}
+
+/* ============ Acabado: continuidad y detalle ============ */
+/* El selector es una sola pieza que se desliza, no dos botones que se apagan y prenden. */
+.seg button{position:relative;isolation:isolate}
+.seg button.on{background:none}
+.seg button.on::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:var(--fg)}
+.scroll.swap>*{animation:nvRiseIn .3s var(--ease-out) both}
+.scroll.swap>*:nth-child(2){animation-delay:.04s}
+.scroll.swap>*:nth-child(n+3){animation-delay:.08s}
+/* Las hojas se van como llegaron. */
+.sheet.closing{animation:sheetOut .2s var(--ease-ios) forwards}
+.scrim.closing,.bigphoto.closing{animation:nvFadeOut .2s linear forwards}
+@keyframes sheetOut{to{transform:translateY(100%)}}
+/* Una invitación que dejas pasar se retira; la lista se acomoda sin salto. */
+.rcard{transition:height .3s var(--ease-ios),opacity .18s linear,margin .3s var(--ease-ios),padding .3s var(--ease-ios),transform .3s var(--ease-ios)}
+.rcard.leaving{height:0!important;opacity:0;margin-top:0;padding-block:0;overflow:hidden;transform:scale(.97);pointer-events:none}
+.rcard .hr{display:flex;align-items:center;gap:8px}
+/* El avance del registro crece desde donde estaba. */
+.nv-push-in .progress i{animation:grow .6s var(--ease-ios) .12s both}
+@keyframes grow{from{width:var(--from,0%)}}
+/* Mensajes nuevos: salen de quien habla. */
+.m.new{animation:msgIn .3s var(--ease-out) both}
+.m.me.new{transform-origin:100% 100%}.m.them.new{transform-origin:0 100%}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px) scale(.94)}}
+/* El contador de la barra late cuando un trago sale o vuelve. */
+.barchip .bn{display:inline-block}
+.barchip .bn.tick-down{animation:tickD .45s var(--ease-out)}
+.barchip .bn.tick-up{animation:tickU .6s var(--ease-out)}
+@keyframes tickD{from{opacity:0;transform:translateY(-7px)}}
+@keyframes tickU{from{opacity:0;transform:translateY(7px);color:var(--gold)}60%{color:var(--gold)}}
+/* Elegir se siente: la tarjeta responde y el visto bueno aparece con resorte. */
+.dcard.on{animation:pickOn .34s var(--ease-spring)}
+@keyframes pickOn{from{transform:scale(.965)}}
+.stylecard .ck{animation:ckPop .34s var(--ease-spring)}
+@keyframes ckPop{from{transform:scale(.4);opacity:0}}
+/* Las frases de los tragos se leen completas. */
+.dcard .tg{-webkit-line-clamp:2;min-height:2.7em}
+/* Enviado: el estado del trago llega después de servirse. */
+.sentrow{justify-content:space-between;margin:24px auto 0;max-width:340px;text-align:left}
+.nv-pour-in .sentrow{animation:nvRiseIn .42s var(--ease-out) .85s both}

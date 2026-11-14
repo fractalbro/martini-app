@@ -55,6 +55,9 @@ const I=(n,cls='')=>`<svg class="i ${cls}" aria-hidden="true"><use href="#i-${n}
 const img=k=>`img/${k}.jpg`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'S/ '+n.toFixed(2);
+const courtesy=()=>((S.me&&S.me.cheers)||0)%3;
+const cring=()=>{const n=courtesy();return `<span class="cring ${n===2?'near':''}" style="--p:${n}">${I('glass')}</span>`;};
+const barAria=()=>`Mi barra: ${invCount()} tragos. ${courtesy()} de 3 brindis para el trago de la casa`;
 const tier=t=>`<span class="tier t${t}">${t===0?'Gratis':'Tier '+t}</span>`;
 const calm=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
 const hap=p=>{try{navigator.vibrate&&navigator.vibrate(p);}catch(e){}};
@@ -147,11 +150,11 @@ const waterOK=()=>S.me&&S.me.water_day!==limaDay();
 const curPerson=()=>S.deck.length?S.deck[S.di%S.deck.length]:null;
 
 /* ================= NAVEGACIÓN Y RENDER ================= */
-const POUR=new Set(['sent','gift']);
+const POUR=new Set(['sent','gift']);const RISE=new Set(['person']);
 let lastScreen=null;
-function go(screen,push=true){stopRec();if(push&&S.screen!==screen&&S.screen!=='boot')S.stack.push(S.screen);S.screen=screen;S.sheet=null;render(push?'push':'fade');}
+function go(screen,push=true){stopRec();if(push&&S.screen!==screen&&S.screen!=='boot')S.stack.push(S.screen);S.screen=screen;S.sheet=null;render(push?(RISE.has(screen)?'modal':'push'):'fade');}
 function tab(t){stopRec();S.stack=[];S.sheet=null;S.screen=t;render('tab');}
-function back(){stopRec();S.sheet=null;S.screen=S.stack.pop()||'personas';render('pop');}
+function back(){stopRec();S.sheet=null;const from=S.screen;S.screen=S.stack.pop()||'personas';render(RISE.has(from)?'drop':'pop');}
 function stopRec(){if(REC.mr)recCancel();S.cmic=null;if(S.voice&&S.voice.on)S.voice=null;if(S.D&&S.D.intro&&S.D.intro.on)S.D.intro=null;if(player)player.pause();}
 
 function render(anim){
@@ -160,6 +163,7 @@ function render(anim){
   const sc0=old&&old.querySelector('.scroll');const prevScroll=kind?0:(sc0?sc0.scrollTop:0);
   const focusId=!kind&&document.activeElement&&document.activeElement.id;
   const v=V[S.screen]||V.personas;
+  const segOld=!kind&&old?old.querySelector('.seg button.on'):null;const segX=segOld?segOld.getBoundingClientRect().left:null;
   if(kind&&old&&!calm()&&lastScreen!==S.screen){
     if(POUR.has(S.screen)&&kind!=='pop')kind='pour';
     [...$app.children].forEach(c=>{if(c!==old)c.remove();});
@@ -176,14 +180,22 @@ function render(anim){
   if(focusId){const f=document.getElementById(focusId);if(f&&f.tagName==='INPUT'){f.focus();}}
   if(S.sheet&&SHEETS[S.sheet.k])$app.insertAdjacentHTML('beforeend',SHEETS[S.sheet.k]());
   AFTER[S.screen]&&AFTER[S.screen](kind);
+  polish(sc,segX);
   lastScreen=S.screen;
 }
 const rerender=()=>render(false);
+/* Detalles de continuidad: el selector se desliza, el contador de la barra late cuando cambia. */
+let lastInv=null;
+function polish(sc,segX){if(!sc||calm())return;
+  const on=sc.querySelector('.seg button.on');
+  if(on&&segX!=null&&on.animate){const dx=segX-on.getBoundingClientRect().left;if(Math.abs(dx)>4)try{on.animate([{transform:`translateX(${dx}px)`},{transform:'none'}],{duration:320,easing:'cubic-bezier(.32,.72,0,1)',pseudoElement:'::before'});}catch(e){}}
+  const bn=sc.querySelector('.barchip .bn');if(bn&&S.me){const n=invCount();if(lastInv!=null&&n!==lastInv)bn.classList.add(n>lastInv?'tick-up':'tick-down');lastInv=n;}}
+function swapIn(){if(calm())return;const b=$app.querySelector('.screen:not(.ghost)>.scroll');if(b){b.classList.remove('swap');b.offsetWidth;b.classList.add('swap');}}
 const live=['actividad','personas','bar','perfil'];
 
 const shell=(cls,glow,inner)=>`<section class="screen ${cls}" style="--glow:${glow}">${inner}</section>`;
 const topbar=(title,right='')=>`<div class="top pad"><button class="iconbtn" data-a="back" aria-label="Volver" type="button">${I('back')}</button><span class="title">${title}</span><span style="flex:1"></span>${right}</div>`;
-const steps=n=>S.editing?topbar(''):`<div class="top pad">${n>1?`<button class="iconbtn" data-a="back" aria-label="Volver" type="button">${I('back')}</button>`:'<span style="width:44px"></span>'}<div class="progress"><i style="width:${n*20}%"></i></div><span class="small dim num">${n} de 5</span></div>`;
+const steps=n=>S.editing?topbar(''):`<div class="top pad">${n>1?`<button class="iconbtn" data-a="back" aria-label="Volver" type="button">${I('back')}</button>`:'<span style="width:44px"></span>'}<div class="progress"><i style="width:${n*20}%;--from:${(n-1)*20}%"></i></div><span class="small dim num">${n} de 5</span></div>`;
 function greet(){const n=first(S.me?.name);const d=new Date(),h=d.getHours(),w=d.getDay();
   if((w===5||w===6)&&h>=17)return `Ya es ${w===5?'viernes':'sábado'}, ${n}.`;
   if(h>=19||h<5)return `Buenas noches, ${n}.`;if(h<12)return `Buenos días, ${n}.`;return `Buenas tardes, ${n}.`;}
@@ -290,10 +302,11 @@ gift:()=>shell('','#E6C27A',`<div class="scroll pad" style="text-align:center;pa
     <h1 class="display" style="margin-top:12px">Tienes 3 tragos<br><em>para invitar</em></h1>
     <div class="fan"><img src="${img('heaven')}" alt="Heaven Martini"><img src="${img('vendetta')}" alt="Vendetta"><img src="${img('sunshine')}" alt="My Sunshine"></div>
     <p class="lead" style="margin:22px auto 0">Un Heaven Martini, un Vendetta y un My Sunshine ya están en tu barra. Si alguien no acepta, el trago vuelve a ti.</p>
+    <div class="water card" style="margin-top:24px;text-align:left"><img src="${img('water')}" alt=""><div><b class="h3" style="font-size:var(--t-body)">Y un Cool Water gratis cada día</b><div class="small muted">Para decir “me interesas” sin gastar un trago.</div></div></div>
   </div>
   <div class="foot pad"><button class="btn btn-primary" data-a="tab" data-v="personas" type="button">Descubrir personas</button></div>`),
 
-personas:()=>{const p=curPerson();const head=`<div class="pad brandbar"><span class="brand"><img src="img/lips.png" alt=""><span class="wordmark">Martini</span></span><button class="barchip" data-a="tab" data-v="bar" type="button" aria-label="Mi barra: ${invCount()} tragos">${I('glass')}<span>${invCount()}</span></button></div>`;
+personas:()=>{const p=curPerson();const head=`<div class="pad brandbar"><span class="brand"><img src="img/lips.png" alt=""><span class="wordmark">Martini</span></span><button class="barchip" data-a="tab" data-v="bar" type="button" aria-label="${barAria()}">${cring()}<span class="bn">${invCount()}</span></button></div>`;
   if(!p)return shell('','#86E3AE',`${head}<div class="scroll pad"><h1 class="h2">${greet()}</h1>
     <div class="empty" style="padding-top:64px"><div class="h2">La barra recién abre</div>En un rato llega más gente.</div></div>
     ${tabsbar('personas')}`);
@@ -306,7 +319,7 @@ personas:()=>{const p=curPerson();const head=`<div class="pad brandbar"><span cl
       <div class="pcard" id="pcard" data-a="open-person" role="button" tabindex="0" aria-label="Ver a ${esc(p.name)}">
         <img src="${img(sig(p.style))}" alt="">
         <div class="shade"></div>
-        <div class="tl"><span class="sig">Su trago<b>${d.n}</b></span></div>
+        <div class="tl"><span class="sig">Su trago<b>${d.n}</b></span>${tier(d.tier)}</div>
         <div class="info">
           <div class="who">${veilAv(p,48)}<div><div class="name">${esc(p.name)}, ${p.age}</div><div class="meta">${esc(p.district)}</div></div></div>
           ${p.bio?`<p class="bio">${esc(p.bio)}</p>`:''}
@@ -362,7 +375,7 @@ record:()=>{const p=S.target;const d=DR[S.pick];const v=S.voice;const has=v&&v.b
     <p class="small muted" style="margin:8px auto 0;max-width:30ch">${first(p.name)} lo escuchará antes de ver tu foto. Hasta ${MAXV} segundos.</p>
     ${!has&&S.tpl!=null?`<div class="script"><span class="eyebrow">Léelo tal cual o a tu manera</span>${esc(TPL(p,d)[S.tpl])}</div>`:''}
     <div style="margin-top:18px">${voiceBlock('inv',v,d.c)}</div>
-    ${!v?`<div class="ideas">${['Por qué este trago','Algo de su perfil','Un plan simple'].map((t,i)=>`<button type="button" class="chip ${S.tpl===i?'on':''}" data-a="tpl" data-v="${i}">${t}</button>`).join('')}</div>`:''}
+    ${!v?`<div class="ideas">${['Por qué este trago','Algo de su perfil','Un plan simple'].map((t,i)=>`<button type="button" class="chip ${S.tpl===i?'on':''}" data-a="tpl" data-v="${i}">${t}</button>`).join('')}</div><p class="small dim" style="margin-top:12px">Puedes grabarlo las veces que quieras antes de enviarlo.</p>`:''}
   </div>
   <div class="foot pad"><button class="btn btn-primary" data-a="send" data-v="voice" type="button" ${has&&!S.busy?'':'disabled'}>${S.busy?'Sirviendo…':'Enviar invitación'}</button><button class="btn btn-ghost" data-a="send" data-v="novoice" type="button" ${S.busy||(v&&v.on)?'disabled':''}>Enviar sin brindis</button></div>`);},
 
@@ -370,12 +383,13 @@ sent:()=>{const p=S.target;const d=DR[S.sentDrink];return shell('',d.c,`<div cla
     <div class="rings"><img src="${img(S.sentDrink)}" alt="${d.n}"></div>
     <h1 class="display" style="margin-top:24px;font-size:34px">Tu ${d.n}<br><em>va en camino</em></h1>
     <p class="lead" style="margin:12px auto 0">${first(p.name)} tiene 48 horas para brindar. Si no, el trago vuelve a tu barra.</p>
+    <div class="card statusrow sentrow">${ice(new Date().toISOString())}<span class="pill go num">${invCount()} en tu barra</span></div>
   </div>
   <div class="foot pad"><button class="btn btn-primary" data-a="tab" data-v="personas" type="button">Seguir descubriendo</button><button class="btn btn-ghost" data-a="go-act" data-v="enviadas" type="button">Ver mis invitaciones</button></div>`);},
 
 actividad:()=>{const t=S.act;let body='';const goDisc=`<button class="btn btn-primary" data-a="tab" data-v="personas" type="button" style="margin-top:20px">Descubrir personas</button>`;
-  if(t==='recibidas'){body=S.recv.length?S.recv.map(r=>{const d=DR[r.drink];const f=S.people[r.from_id]||{};return `<article class="card rcard"><img src="${img(r.drink)}" alt="${d.n}"><div style="min-width:0">
-      <div class="head">${ice(r.created_at)}<button type="button" class="iconbtn sm" data-a="sheet" data-v="safety-inv" data-id="${r.from_id}" aria-label="Más opciones">${I('dots','s')}</button></div>
+  if(t==='recibidas'){body=S.recv.length?S.recv.map(r=>{const d=DR[r.drink];const f=S.people[r.from_id]||{};return `<article class="card rcard" data-inv="${r.id}"><img src="${img(r.drink)}" alt="${d.n}"><div style="min-width:0">
+      <div class="head">${ice(r.created_at)}<span class="hr">${tier(d.tier)}<button type="button" class="iconbtn sm" data-a="sheet" data-v="safety-inv" data-id="${r.from_id}" aria-label="Más opciones">${I('dots','s')}</button></span></div>
       <div class="what">Alguien te invitó un <b>${d.n}</b></div>
       <div class="hint">${f.age?f.age+' años · ':''}${esc(f.district||'')}</div>
       ${r.drink==='water'?'<div class="hint" style="margin-top:10px">Te dejó un Cool Water: le interesas.</div>':vn(r.voice,r.voice_secs,r.voice_peaks,false,'recibidas')}
@@ -384,7 +398,7 @@ actividad:()=>{const t=S.act;let body='';const goDisc=`<button class="btn btn-pr
     :`<div class="empty"><div class="h2">Tu barra está tranquila</div>Todavía nadie se acerca a tu barra. Quien invita primero, recibe.${goDisc}</div>`;}
   if(t==='enviadas'){body=S.sent.length?`<div class="card" style="padding:4px 16px;margin-top:14px">${S.sent.map(s=>{const d=DR[s.drink];const p=S.people[s.to_id]||{};const m=s.status==='accepted'&&S.matches.find(x=>x.invite_id===s.id&&!x.closed);
       const st=s.status==='pending'?`<span class="sstate ${hoursLeft(s.created_at)<=12?'low':''}">En camino · se enfría en ${hrs(hoursLeft(s.created_at))}</span>`:s.status==='accepted'?`<span class="sstate go">¡Salud!${m?' · abrir chat':''}</span>`:`<span class="sstate">Volvió a tu barra</span>`;
-      return `<button type="button" class="row" ${m?`data-a="open-chat" data-v="${m.id}"`:''}><img class="th" src="${img(s.drink)}" alt=""><div class="grow"><b>Para ${first(p.name||'')}</b>${st}</div></button>`;}).join('')}</div>`
+      return `<button type="button" class="row" ${m?`data-a="open-chat" data-v="${m.id}"`:''}><img class="th" src="${img(s.drink)}" alt=""><div class="grow"><b>Para ${first(p.name||'')}</b>${st}</div></button>`;}).join('')}</div>${S.sent.some(s=>s.status==='pending')?`<div class="note" style="margin-top:14px">${I('return')}<span>Si no brindan en 48 horas, el trago regresa solo a tu barra.</span></div>`:''}`
     :`<div class="empty"><div class="h2">Aún no invitas a nadie</div>Tienes ${invCount()} ${invCount()===1?'trago':'tragos'} esperando.${goDisc}</div>`;}
   if(t==='chats'){const ms=S.matches.filter(m=>!m.closed);body=ms.length?`<div class="card" style="padding:4px 16px;margin-top:14px">${ms.map(m=>{const pid=peerOf(m);const p=S.people[pid]||{};const l=lastOf(m);const lt=!l?'Brindaron con '+DR[m.drink].n:l.voice?`Nota de voz · 0:${String(l.voice_secs||0).padStart(2,'0')}`:l.body;
       return `<button type="button" class="row" data-a="open-chat" data-v="${m.id}">${photoAv((S.photos[pid]||[])[0],p,46)}<div class="grow"><b>${first(p.name)}</b><span>${esc(lt)}</span></div>${unread(m)?'<span class="udot" aria-label="Sin leer"></span>':''}</button>`;}).join('')}</div>`
@@ -402,12 +416,12 @@ salud:()=>{const s=S.salud;const d=DR[s.drink];const p=S.people[s.peer]||{};cons
     <div class="revealph" style="--c:${d.c}">${p.veil?`<img class="vl" src="${esc(p.veil)}" alt="">`:''}${ph?`<img class="rp" id="rp" src="${esc(ph)}" alt="Foto de ${esc(p.name)}">`:''}</div>
     <div class="rname"><div class="h2" style="font-size:var(--t-head-l)">${esc(p.name)}, ${p.age||''}</div><div class="small muted">${esc(p.district||'')} · Estilo ${esc(p.style||'')}</div>
     <p class="small muted" style="margin:10px 0 0">${line}</p>
-    ${s.gift?`<div class="reward">${I('gift')}<span>La casa invita: un ${DR[s.gift].n} llegó a tu barra.</span></div>`:''}</div>
+    ${s.gift?`<div class="reward">${I('gift')}<span>La casa invita: un ${DR[s.gift].n} llegó a tu barra.</span></div>`:s.role==='sender'&&courtesy()?`<p class="small dim num" style="margin:8px 0 0">${courtesy()===2?'Un brindis más y la casa invita.':'Dos brindis más y la casa invita.'}</p>`:''}</div>
   </div>
   <div class="foot pad"><button class="btn btn-primary" data-a="open-chat" data-v="${s.match}" data-rec="1" type="button">${I('mic')} Responder con tu voz</button><button class="btn btn-ghost" data-a="salud-later" type="button">Después</button></div>`);},
 
 chat:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m)return V.actividad();const pid=peerOf(m);const p=S.people[pid]||{};const d=DR[m.drink];const list=S.msgs[m.id]||[];const ph=(S.photos[pid]||[])[0];
-  return shell('',d.c,`<div class="chathead pad"><button class="iconbtn" data-a="back" aria-label="Volver" type="button">${I('back')}</button><button type="button" class="avbtn" data-a="sheet" data-v="photo" aria-label="Ver foto">${photoAv(ph,p,40)}</button><div class="grow"><b>${esc(first(p.name))}${p.age?', '+p.age:''}</b><span>Brindaron con ${d.n}</span></div>
+  return shell('',d.c,`<div class="chathead pad"><button class="iconbtn" data-a="back" aria-label="Volver" type="button">${I('back')}</button><button type="button" class="avbtn" data-a="sheet" data-v="photo" aria-label="Ver foto">${photoAv(ph,p,40)}</button><div class="grow"><b>${esc(first(p.name))}${p.age?', '+p.age:''}</b><span>${esc(p.district||'')}</span></div>
     <button class="iconbtn glass" data-a="sheet" data-v="chatmenu" type="button" aria-label="Más opciones">${I('dots')}</button></div>
   <div class="scroll pad"><div class="msgs" id="msgs">
     <div class="sys">Brindaron con ${d.n}</div>
@@ -417,14 +431,14 @@ chat:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m)return V.actividad();co
   ${m.closed?'':`<div class="composer pad" id="composer">${composer()}</div>`}`);},
 
 bar:()=>{const t=S.barTab;let body='';
-  if(t==='carta'){const card=k=>{const d=DR[k];const have=(S.me.inv||{})[k];return `<button type="button" class="dcard" style="--c:${d.c}" data-a="want" data-v="${k}"><div class="im"><img src="${img(k)}" alt="" loading="lazy">${tier(d.tier)}${have?`<span class="cnt">x${have}</span>`:''}</div><div class="tx"><b>${d.n}</b><div class="tg">${d.t}</div><div class="pr">${have?'En tu barra':money(PRICE[d.tier])}</div></div></button>`;};
+  if(t==='carta'){const card=k=>{const d=DR[k];const have=(S.me.inv||{})[k];return `<button type="button" class="dcard" style="--c:${d.c}" data-a="want" data-v="${k}"><div class="im"><img src="${img(k)}" alt="" loading="lazy">${tier(d.tier)}${have>1?`<span class="cnt">x${have}</span>`:''}</div><div class="tx"><b>${d.n}</b><div class="tg">${d.t}</div><div class="pr">${have?'En tu barra':money(PRICE[d.tier])}</div></div></button>`;};
     body=Object.keys(STY).map(sk=>{const sy=STY[sk];const ks=Object.keys(DR).filter(k=>DR[k].s===sk).sort((a,b)=>DR[a].tier-DR[b].tier);return `<div class="sec"><div class="stylehead" style="--c:${sy.c}"><img src="${img(sy.img)}" alt=""><div style="flex:1;min-width:0"><b>${sk}</b><span>${sy.d}</span></div></div><div class="hscroll">${ks.map(card).join('')}</div></div>`;}).join('')
     +`<div class="card water" style="margin-top:24px"><img src="${img('water')}" alt=""><div style="flex:1"><b class="h3" style="font-size:var(--t-body)">Cool Water</b><div class="small muted">Gratis, uno al día. Dice “me interesas” sin voz.</div></div>${tier(0)}</div>`;}
   else{const avail=Object.entries(S.me.inv||{}).filter(([,n])=>n>0);
     body=`${avail.length?`<div class="grid2" style="margin-top:18px">${avail.map(([k,n])=>{const d=DR[k];return `<div class="dcard" style="--c:${d.c}"><div class="im"><img src="${img(k)}" alt="">${tier(d.tier)}${n>1?`<span class="cnt">x${n}</span>`:''}</div><div class="tx"><b>${d.n}</b><div class="tg">${d.t}</div></div></div>`;}).join('')}</div>`:`<div class="empty" style="padding:28px 10px"><div class="h2">Tu barra descansa</div>Tus tragos en camino vuelven si no los aceptan en 48 horas.</div>`}
     <div class="card water" style="margin-top:16px"><img src="${img('water')}" alt=""><div style="flex:1"><b class="h3" style="font-size:var(--t-body)">Cool Water</b><div class="small muted">${waterOK()?'Disponible hoy':'Vuelve mañana'}</div></div>${tier(0)}</div>
     <p class="small muted" style="text-align:center;margin-top:18px">Cada 3 brindis, la casa invita uno.</p>`;}
-  return shell('','#E6C27A',`<div class="pad" style="padding-top:8px;display:flex;justify-content:space-between;align-items:center"><h1 class="display neonsign" style="font-size:38px">El Bar</h1><span class="barchip">${I('glass')}<span>${invCount()}</span></span></div>
+  return shell('','#E6C27A',`<div class="pad" style="padding-top:8px;display:flex;justify-content:space-between;align-items:center"><h1 class="display neonsign" style="font-size:38px">El Bar</h1><span class="barchip" role="img" aria-label="${barAria()}">${cring()}<span class="bn">${invCount()}</span></span></div>
   <div class="pad"><div class="seg">${[['carta','Carta'],['barra','Mi barra']].map(([k,l])=>`<button type="button" class="${t===k?'on':''}" data-a="bartab" data-v="${k}">${l}</button>`).join('')}</div></div>
   <div class="scroll pad">${body}<div style="height:22px"></div></div>${tabsbar('bar')}`);},
 
@@ -523,7 +537,7 @@ function subscribe(){if(channel)sb.removeChannel(channel);
   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'matches'},({new:m})=>{const o=S.matches.find(y=>y.id===m.id);if(o){o.closed=m.closed;if(S.screen==='chat'&&S.chat===m.id)rerender();}})
   .subscribe();}
 const scrollChat=()=>{const s=$app.querySelector('.screen:not(.ghost) .scroll');if(s)s.scrollTop=s.scrollHeight;};
-function appendMsgs(){const box=document.getElementById('msgs');if(!box){rerender();return;}const m=S.matches.find(x=>x.id===S.chat);box.innerHTML=`<div class="sys">Brindaron con ${DR[m.drink].n}</div>${(S.msgs[S.chat]||[]).map(msg).join('')}${m.closed?'<div class="sys">Este brindis terminó</div>':''}`;scrollChat();}
+function appendMsgs(){const box=document.getElementById('msgs');if(!box){rerender();return;}const had=box.querySelectorAll('.m').length;const m=S.matches.find(x=>x.id===S.chat);box.innerHTML=`<div class="sys">Brindaron con ${DR[m.drink].n}</div>${(S.msgs[S.chat]||[]).map(msg).join('')}${m.closed?'<div class="sys">Este brindis terminó</div>':''}`;const ms=box.querySelectorAll('.m');if(ms.length>had&&!calm())ms[ms.length-1].classList.add('new');scrollChat();}
 
 /* ================= ACCIONES ================= */
 const draft=()=>({name:'',birth:'',district:'',gender:'',interest:'',style:'Mystery',bio:'',photo:null,intro:null});
@@ -592,14 +606,14 @@ const A={
       if(!standalone&&!LS.get('install',false)){LS.set('install',true);setTimeout(()=>{if(S.screen==='sent'||S.screen==='personas'){S.sheet={k:'install'};rerender();}},2600);}
     }catch(e){S.busy=false;rerender();err(e,'No se pudo enviar. Tu trago sigue en tu barra.');}},
   'go-act':v=>{S.act=v;if(v==='recibidas')S.recv.forEach(r=>track('invite_seen'));tab('actividad');},
-  act:v=>{S.act=v;rerender();},
+  act:v=>{if(S.act===v)return;S.act=v;rerender();swapIn();},
   accept:async(v,el)=>{const r=S.recv.find(x=>x.id===v);if(!r||S.busy)return;S.busy=true;el.disabled=true;el.innerHTML=`${I('glass','s')} Brindando…`;
     loadPhotosOf([r.from_id]).catch(()=>{});
     try{const {data:mid,error}=await sb.rpc('answer_invite',{p_id:v,p_accept:true});if(error)throw error;
       track('invite_accepted',{hours:Math.round(48-hoursLeft(r.created_at))});S.recv=S.recv.filter(x=>x.id!==v);
       await Promise.all([loadMatches(),loadPhotosOf([r.from_id])]);S.busy=false;showSalud(mid);
     }catch(e){S.busy=false;err(e);await loadInvites();rerender();}},
-  decline:async v=>{const r=S.recv.find(x=>x.id===v);S.recv=S.recv.filter(x=>x.id!==v);rerender();
+  decline:async v=>{const r=S.recv.find(x=>x.id===v);const card=$app.querySelector(`.rcard[data-inv="${v}"]`);if(card&&!calm()){card.style.height=card.offsetHeight+'px';card.offsetHeight;card.classList.add('leaving');await new Promise(z=>setTimeout(z,300));}S.recv=S.recv.filter(x=>x.id!==v);rerender();
     try{const {error}=await sb.rpc('answer_invite',{p_id:v,p_accept:false});if(error)throw error;track('invite_passed');}catch(e){if(r)S.recv.unshift(r);rerender();err(e);}},
   'open-salud':v=>{if(v)showSalud(v);},
   'salud-later':()=>{if(nextSalud())return;S.stack=[];tab(S.salud&&S.salud.role==='receiver'?'actividad':'personas');},
@@ -610,11 +624,11 @@ const A={
     else{S.cmic={t:0};rerender();const ok=await recStart(MAXC,(t,s)=>{const el=document.getElementById('cmt');if(el){el.textContent='0:'+String(Math.floor(t)).padStart(2,'0');el.classList.toggle('late',t>=MAXC-5);}const bs=document.querySelectorAll('#live i');const last=s.slice(-28);bs.forEach((b,i)=>{const x=last[i-(28-last.length)];b.style.height=(x==null?3:Math.round(3+17*x))+'px';});},()=>A.cmic());if(!ok){S.cmic=null;rerender();}}},
   'cmic-x':()=>{recCancel();S.cmic=null;rerender();},
   retry:v=>{const l=S.msgs[S.chat]||[];const m=l.find(x=>x.id===v);if(!m)return;S.msgs[S.chat]=l.filter(x=>x!==m);sendMsg(m.raw);},
-  bartab:v=>{S.barTab=v;rerender();},
+  bartab:v=>{if(S.barTab===v)return;S.barTab=v;rerender();swapIn();},
   want:v=>{if((S.me.inv||{})[v])return toast('Ya está en tu barra, lista para invitar','glass');S.sheet={k:'want',v};rerender();},
   'want-go':()=>{const k=S.sheet.v;track('drink_wanted',{drink:k,tier:DR[k].tier});S.sheet=null;rerender();toast('Anotado. Te avisamos.','bell');},
   sheet:(v,el)=>{let p=S.target;if(S.screen==='chat'){const m=S.matches.find(x=>x.id===S.chat);p={id:peerOf(m),...S.people[peerOf(m)]};}if(v==='safety-inv'){p={id:el.dataset.id,...S.people[el.dataset.id],name:'esta persona'};v='safety';}S.sheet={k:v,p};rerender();},
-  'close-sheet':()=>{S.sheet=null;rerender();},
+  'close-sheet':()=>{const els=$app.querySelectorAll('.sheet,.scrim,.bigphoto');if(!els.length||calm()){S.sheet=null;rerender();return;}els.forEach(e=>e.classList.add('closing'));setTimeout(()=>{S.sheet=null;rerender();},200);},
   block:async v=>{try{const {error}=await sb.rpc('block_user',{p_id:v});if(error)throw error;track('block');removeFromDeck(v);S.recv=S.recv.filter(x=>x.from_id!==v);S.sheet=null;
       toast('Listo. Ya no se verán en Martini.','lock');await loadMatches();S.stack=[];tab(S.screen==='chat'||S.screen==='actividad'?'actividad':'personas');}catch(e){err(e);}},
   report:v=>{S.sheet={k:'report',p:S.sheet?.p,v};rerender();},
