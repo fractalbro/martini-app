@@ -72,7 +72,7 @@ const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==
 const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
 const LS={get:(k,d)=>{try{return JSON.parse(localStorage.getItem('martini-'+k))??d;}catch(e){return d;}},set:(k,v)=>{try{localStorage.setItem('martini-'+k,JSON.stringify(v));}catch(e){}}};
 
-function ice(ts){const h=hoursLeft(ts);const f=Math.max(.1,Math.min(1,h/48));const low=h<=12;const c=low?'#E6C27A':'#86E3AE';const top=3+(1-f)*12;
+function ice(ts,tot=48){const h=Math.max(0,tot-(Date.now()-new Date(ts).getTime())/36e5);const f=Math.max(.1,Math.min(1,h/tot));const low=h<=tot/4;const c=low?'#E6C27A':'#86E3AE';const top=3+(1-f)*12;
   return `<span class="ice ${low?'low':''}"><svg viewBox="0 0 16 20" aria-hidden="true"><rect x="1.5" y="${top.toFixed(1)}" width="13" height="${(16.5-top).toFixed(1)}" rx="3" fill="${c}" fill-opacity=".22" stroke="${c}" stroke-width="1.3"/><path d="M5 ${(top+4).toFixed(1)}h3" stroke="${c}" stroke-width="1.3" stroke-linecap="round"/></svg>Se enfría en ${hrs(h)}</span>`;}
 function seedPeaks(s,n=28){let x=0;for(const c of String(s))x=(x*31+c.charCodeAt(0))>>>0;const o=[];for(let i=0;i<n;i++){x=(x*9301+49297)%233280;o.push(.25+.75*(x/233280)*(.55+.45*Math.sin(i/2.2)**2));}return o;}
 function vn(path,secs,peaks,mine=false,where=''){if(!path)return '';secs=Math.max(1,Math.round(secs||1));const pk=(Array.isArray(peaks)&&peaks.length?peaks:seedPeaks(path));
@@ -139,7 +139,7 @@ async function play(btn){const path=btn.dataset.v,dur=+btn.dataset.d;
 /* ================= ESTADO ================= */
 let S={screen:'boot',stack:[],sheet:null,session:null,me:null,myPhoto:null,
   deck:[],di:0,looped:false,recv:[],sent:[],matches:[],people:{},photos:{},msgs:{},chat:null,
-  act:'recibidas',ob:0,auth:'login',authStep:'code',code:null,D:null,editing:null,target:null,pick:null,voice:null,salud:null,saludQ:[],cmic:null,barTab:'carta',busy:false};
+  act:'recibidas',ob:0,auth:'login',authStep:'code',code:null,D:null,editing:null,target:null,pick:null,voice:null,salud:null,saludQ:[],cmic:null,barTab:'carta',busy:false,dview:'personas',rondas:[],hands:3,myRonda:null,R:null,P:null,nrecv:0};
 const lastRead=LS.get('read',{});
 const markRead=id=>{lastRead[id]=new Date().toISOString();LS.set('read',lastRead);};
 const lastOf=m=>(S.msgs[m.id]||[]).slice(-1)[0]||m.last;
@@ -155,7 +155,7 @@ let lastScreen=null;
 function go(screen,push=true){stopRec();if(push&&S.screen!==screen&&S.screen!=='boot')S.stack.push(S.screen);S.screen=screen;S.sheet=null;render(push?(RISE.has(screen)?'modal':'push'):'fade');}
 function tab(t){stopRec();S.stack=[];S.sheet=null;S.screen=t;render('tab');}
 function back(){stopRec();S.sheet=null;const from=S.screen;S.screen=S.stack.pop()||'personas';render(RISE.has(from)?'drop':'pop');}
-function stopRec(){if(REC.mr)recCancel();S.cmic=null;if(S.voice&&S.voice.on)S.voice=null;if(S.D&&S.D.intro&&S.D.intro.on)S.D.intro=null;if(player)player.pause();}
+function stopRec(){if(REC.mr)recCancel();S.cmic=null;if(S.voice&&S.voice.on)S.voice=null;if(S.D&&S.D.intro&&S.D.intro.on)S.D.intro=null;if(S.R&&S.R.voice&&S.R.voice.on)S.R.voice=null;if(player)player.pause();}
 
 function render(anim){
   let kind=anim===true?'fade':anim;
@@ -205,10 +205,43 @@ const tabsbar=active=>{const n=S.recv.length+S.matches.filter(unread).length;con
 const chipsOf=(key,opts,val)=>`<div class="chips">${opts.map(o=>`<button type="button" class="chip ${val===o?'on':''}" data-a="setd" data-k="${key}" data-v="${esc(o)}" aria-pressed="${val===o}">${esc(o)}</button>`).join('')}</div>`;
 const TPL=(p,d)=>[`Elegí el ${d.n} porque es ${d.t.toLowerCase()}. Algo me dice que tú también.`,p.bio?`Leí tu frase y me quedé con ganas de saber más. ¿Me la cuentas con este trago?`:`Hola ${first(p.name)}. Tu estilo ${p.style} me dio curiosidad. ¿Brindamos?`,`¿Un ${d.n} este fin de semana? Algo simple: buena conversación y nada de prisa.`];
 
+/* ================= RONDAS Y SALIDAS ================= */
+const RPLANS={'Jazz en Barranco':'Viernes de jazz en Barranco. ¿Quién se anima a descubrir un bar nuevo conmigo?','Café el domingo':'Café y buena conversación el domingo por la tarde. Sin prisa.','Atardecer en el malecón':'Atardecer en el malecón de Miraflores y algo fresco. ¿Te apuntas?'};
+const rondaOK=()=>S.R&&S.R.d&&S.R.plan.trim().length>=8&&!(S.R.voice&&S.R.voice.on);
+const rondaCard=r=>{const d=DR[r.drink];return `<article class="card ronda">
+  <div class="who">${veilAv(r,44)}<div style="flex:1;min-width:0"><b>${esc(r.name)}, ${r.age}</b><span>${esc(r.district)} · ${esc(r.style)}</span></div><button type="button" class="iconbtn sm" data-a="sheet" data-v="safety-inv" data-id="${r.owner}" aria-label="Más opciones">${I('dots','s')}</button></div>
+  <p class="plan-t" style="margin:0">${esc(r.plan)}</p>
+  ${r.voice?`<div>${vn(r.voice,r.voice_secs,r.voice_peaks,false,'ronda')}</div>`:''}
+  <div class="drinkrow"><img src="${img(r.drink)}" alt=""><div style="flex:1;min-width:0"><span class="small dim">Su trago para esta ronda</span><b>${d.n}</b></div>${tier(d.tier)}</div>
+  <div class="foot2">${ice(r.created_at,24)}<button class="btn ${r.joined?'btn-glass':'btn-primary'} btn-sm" data-a="apuntar" data-v="${r.id}" type="button" aria-pressed="${!!r.joined}">${r.joined?I('check','s')+' Te apuntaste':'Me apunto'}</button></div></article>`;};
+function rondasBody(){const mine=S.myRonda;const n=mine?mine.ap.length:0;
+  return `<div class="card opencard">${mine?`<div><b>Tu ronda está abierta</b><div class="small muted">${n===1?'1 persona se apuntó':n+' personas se apuntaron'}</div></div><button class="btn btn-primary btn-sm" data-a="go" data-v="ronda-mine" type="button">Ver</button>`:`<div><b>Abre tu propia ronda</b><div class="small muted">Lanza un trago con un plan y elige entre quienes se apunten.</div></div><button class="btn btn-gold btn-sm" data-a="new-ronda" type="button">${I('plus','s')} Abrir</button>`}</div>
+  ${S.rondas.length?`<p class="small dim" style="margin-top:14px">Te ${S.hands===1?'queda 1':'quedan '+S.hands} “Me apunto” hoy.</p>${S.rondas.map(rondaCard).join('')}`:`<div class="empty"><div class="h2">Aún no hay rondas abiertas</div>La primera de la noche suele llenarse rápido.</div>`}`;}
+const dseg=()=>S.rondasOff?'':`<div class="seg" style="margin-top:14px" role="tablist">${[['personas','Personas'],['rondas','Rondas abiertas']].map(([k,l])=>`<button type="button" role="tab" aria-selected="${S.dview===k}" class="${S.dview===k?'on':''}" data-a="dview" data-v="${k}">${l}</button>`).join('')}</div>`;
+/* Salidas: viajan como mensajes con formato, sin tablas nuevas. */
+const PL=b=>{if(!b||b[0]!=='#')return null;const a=b.split('|');return a[0]==='#plan'&&a.length>=4?{k:'plan',type:a[1],place:a[2],when:a[3]}:a[0]==='#plan-ok'?{k:'ok',ref:a[1]}:a[0]==='#plan-no'?{k:'no',ref:a[1]}:null;};
+const planState=(list,id)=>{for(const x of list){const p=PL(x.body);if(p&&p.ref===id)return p.k;}return null;};
+const whenTxt=iso=>{const d=new Date(iso);if(isNaN(d))return esc(iso);const o={timeZone:'America/Lima'};const a=d.toLocaleDateString('es-PE',{...o,weekday:'short',day:'numeric',month:'short'}).replace(/\./g,'');return a.charAt(0).toUpperCase()+a.slice(1)+' · '+d.toLocaleTimeString('en-US',{...o,hour:'numeric',minute:'2-digit'}).toLowerCase();};
+const preview=l=>{const p=PL(l.body);return p?(p.k==='plan'?'Propuesta de salida':p.k==='ok'?'Salida confirmada':'La salida quedó para otro día'):l.body;};
+function planWhens(){const now=Date.now();const L=new Date(now-5*36e5);const out=[];
+  for(const [dow,h,m] of [[4,19,30],[5,20,0],[6,18,0]]){let add=(dow-L.getUTCDay()+7)%7;let t=Date.UTC(L.getUTCFullYear(),L.getUTCMonth(),L.getUTCDate()+add,h+5,m);if(t<now+2*36e5)t+=7*864e5;
+    const x=new Date(t-5*36e5);out.push([t,`${x.getUTCFullYear()}-${String(x.getUTCMonth()+1).padStart(2,'0')}-${String(x.getUTCDate()).padStart(2,'0')}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00-05:00`]);}
+  return out.sort((a,b)=>a[0]-b[0]).map(x=>x[1]);}
+function planPlaces(type,p){if(type==='Caminar')return ['El malecón de Miraflores','El parque Kennedy','El puente de los Suspiros'];
+  const noun={Tragos:'Un bar',Café:'Un café',Cena:'Un restaurante'}[type]||'Un lugar';const ds=[...new Set([p.district,S.me.district,'Barranco','Miraflores'].filter(x=>x&&!/^Otro/.test(x)))].slice(0,3);return ds.map(x=>`${noun} en ${x}`);}
+function checkin(m){const l=S.msgs[m.id]||[];const done=LS.get('checkin',{});const pid=peerOf(m);const now=Date.now();
+  for(let i=l.length-1;i>=0;i--){const x=l[i];const pl=PL(x.body);if(!pl||pl.k!=='plan'||planState(l,x.id)!=='ok')continue;const t=new Date(pl.when).getTime();if(isNaN(t)||now<t+2*36e5||now>t+5*864e5)return '';
+    const dn=done[x.id];if(dn==='bad')return `<div class="card checkin"><b>Gracias por contarnos</b><span class="small muted">Lo sentimos. Tu seguridad es primero.</span><div class="opts"><button type="button" data-a="report" data-v="${pid}">Reportar</button><button type="button" data-a="block" data-v="${pid}">Bloquear</button></div></div>`;
+    if(dn)return '';
+    return `<div class="card checkin"><span class="eyebrow" style="color:var(--gold)">Solo tú lo ves</span><b style="font-size:var(--t-lead)">¿Cómo te fue con ${first((S.people[pid]||{}).name)}?</b><div class="opts">${[['great','Muy bien'],['ok','Bien'],['nochem','No hubo química'],['bad','Algo no estuvo bien']].map(([k,t2])=>`<button type="button" data-a="checkin" data-v="${k}" data-id="${x.id}">${t2}</button>`).join('')}</div><span class="small dim">Nunca mostramos calificaciones públicas.</span></div>`;}
+  return '';}
+const chatBody=m=>`<div class="sys">Brindaron con ${DR[m.drink].n}</div>${(S.msgs[m.id]||[]).map(msg).join('')}${m.closed?'<div class="sys">Este brindis terminó</div>':checkin(m)}`;
+
 /* ================= VISTAS ================= */
 const OB=[
   {img:'onenight',c:'#39E35F',t:'Invita un trago,<br><em>no un like.</em>',p:'Elige el cocktail que habla por ti y envíaselo a quien te interesa. Un trago dice más que mil corazones.'},
   {img:'vendetta',c:'#2EE66B',t:'Primero se escucha,<br><em>después se ve.</em>',p:'Ves su trago y escuchas su voz. Las fotos se revelan cuando los dos brindan.'},
+  {img:'aurora',c:'#F5B04A',t:'Abre una ronda,<br><em>elige a quién.</em>',p:'Comparte un plan con tu trago y deja que se apunten. Tú eliges con quién brindar.'},
   {img:'sunshine',c:'#F2A93B',t:'Si no te aceptan,<br><em>vuelve a tu barra.</em>',p:'Cada trago va a una persona a la vez. Si no lo acepta en 48 horas, regresa a ti para invitarlo a alguien más.'}
 ];
 const V={
@@ -306,15 +339,16 @@ gift:()=>shell('','#E6C27A',`<div class="scroll pad" style="text-align:center;pa
   </div>
   <div class="foot pad"><button class="btn btn-primary" data-a="tab" data-v="personas" type="button">Descubrir personas</button></div>`),
 
-personas:()=>{const p=curPerson();const head=`<div class="pad brandbar"><span class="brand"><img src="img/lips.png" alt=""><span class="wordmark">Martini</span></span><button class="barchip" data-a="tab" data-v="bar" type="button" aria-label="${barAria()}">${cring()}<span class="bn">${invCount()}</span></button></div>`;
-  if(!p)return shell('','#86E3AE',`${head}<div class="scroll pad"><h1 class="h2">${greet()}</h1>
+personas:()=>{const p=curPerson();const seg=dseg();const head=`<div class="pad brandbar"><span class="brand"><img src="img/lips.png" alt=""><span class="wordmark">Martini</span></span><button class="barchip" data-a="tab" data-v="bar" type="button" aria-label="${barAria()}">${cring()}<span class="bn">${invCount()}</span></button></div>`;
+  if(S.dview==='rondas'&&seg)return shell('','#E6C27A',`${head}<div class="scroll pad"><h1 class="h2">${greet()}</h1>${seg}${rondasBody()}<div style="height:18px"></div></div>${tabsbar('personas')}`);
+  if(!p)return shell('','#86E3AE',`${head}<div class="scroll pad"><h1 class="h2">${greet()}</h1>${seg}
     <div class="empty" style="padding-top:64px"><div class="h2">La barra recién abre</div>En un rato llega más gente.</div></div>
     ${tabsbar('personas')}`);
   const list=S.deck;const nx=list.length>1?list[(S.di+1)%list.length]:null;const d=DR[sig(p.style)];const c=STY[p.style]?.c||'#86E3AE';
   return shell('',c,`${head}
   <div class="scroll pad">
-    <h1 class="h2">${greet()}</h1>
-    <div class="deck tall">
+    <h1 class="h2">${greet()}</h1>${seg}
+    <div class="deck tall ${seg?'seg2':''}">
       ${nx?`<div class="pcard behind"><img src="${img(sig(nx.style))}" alt=""></div>`:''}
       <div class="pcard" id="pcard" data-a="open-person" role="button" tabindex="0" aria-label="Ver a ${esc(p.name)}">
         <img src="${img(sig(p.style))}" alt="">
@@ -400,16 +434,19 @@ actividad:()=>{const t=S.act;let body='';const goDisc=`<button class="btn btn-pr
       const st=s.status==='pending'?`<span class="sstate ${hoursLeft(s.created_at)<=12?'low':''}">En camino · se enfría en ${hrs(hoursLeft(s.created_at))}</span>`:s.status==='accepted'?`<span class="sstate go">¡Salud!${m?' · abrir chat':''}</span>`:`<span class="sstate">Volvió a tu barra</span>`;
       return `<button type="button" class="row" ${m?`data-a="open-chat" data-v="${m.id}"`:''}><img class="th" src="${img(s.drink)}" alt=""><div class="grow"><b>Para ${first(p.name||'')}</b>${st}</div></button>`;}).join('')}</div>${S.sent.some(s=>s.status==='pending')?`<div class="note" style="margin-top:14px">${I('return')}<span>Si no brindan en 48 horas, el trago regresa solo a tu barra.</span></div>`:''}`
     :`<div class="empty"><div class="h2">Aún no invitas a nadie</div>Tienes ${invCount()} ${invCount()===1?'trago':'tragos'} esperando.${goDisc}</div>`;}
-  if(t==='chats'){const ms=S.matches.filter(m=>!m.closed);body=ms.length?`<div class="card" style="padding:4px 16px;margin-top:14px">${ms.map(m=>{const pid=peerOf(m);const p=S.people[pid]||{};const l=lastOf(m);const lt=!l?'Brindaron con '+DR[m.drink].n:l.voice?`Nota de voz · 0:${String(l.voice_secs||0).padStart(2,'0')}`:l.body;
+  if(t==='chats'){const ms=S.matches.filter(m=>!m.closed);body=ms.length?`<div class="card" style="padding:4px 16px;margin-top:14px">${ms.map(m=>{const pid=peerOf(m);const p=S.people[pid]||{};const l=lastOf(m);const lt=!l?'Brindaron con '+DR[m.drink].n:l.voice?`Nota de voz · 0:${String(l.voice_secs||0).padStart(2,'0')}`:preview(l);
       return `<button type="button" class="row" data-a="open-chat" data-v="${m.id}">${photoAv((S.photos[pid]||[])[0],p,46)}<div class="grow"><b>${first(p.name)}</b><span>${esc(lt)}</span></div>${unread(m)?'<span class="udot" aria-label="Sin leer"></span>':''}</button>`;}).join('')}</div>`
     :`<div class="empty"><div class="h2">Aquí aparecen tus brindis</div></div>`;}
-  const cnt={recibidas:S.recv.length,chats:S.matches.filter(unread).length};
+  if(t==='rondas'){const R=S.myRonda;const n=R?R.ap.length:0;const ap=S.rondas.filter(r=>r.joined);
+    body=`<div class="card ronda" style="margin-top:14px">${R?`<span class="eyebrow">Tu ronda abierta</span><p class="plan-t" style="margin:0">${esc(R.plan)}</p><div class="foot2">${ice(R.created_at,24)}<button class="btn btn-primary btn-sm" data-a="go" data-v="ronda-mine" type="button">${n?`Ver ${n} ${n===1?'apuntado':'apuntados'}`:'Ver mi ronda'}</button></div>`:`<b>No tienes una ronda abierta</b><span class="small muted">Lanza un trago con un plan y elige entre quienes se apunten.</span><button class="btn btn-gold btn-sm" data-a="new-ronda" type="button" style="justify-self:start">${I('plus','s')} Abrir una ronda</button>`}</div>
+    ${ap.length?`<div class="sec"><span class="eyebrow">Te apuntaste</span><div class="card" style="padding:4px 16px">${ap.map(r=>`<div class="row"><img class="th" src="${img(r.drink)}" alt=""><div class="grow"><b>Ronda de ${first(r.name)}</b><span class="sstate">${esc(r.plan)}</span></div></div>`).join('')}</div></div>`:''}`;}
+  const cnt={recibidas:S.recv.length,chats:S.matches.filter(unread).length,rondas:S.myRonda?S.myRonda.ap.length:0};
   return shell('','#86E3AE',`<div class="pad" style="padding-top:8px"><h1 class="display" style="font-size:34px">Actividad</h1>
-   <div class="seg" role="tablist">${[['recibidas','Recibidas'],['enviadas','Enviadas'],['chats','Chats']].map(([k,l])=>`<button type="button" role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" data-a="act" data-v="${k}">${l}${cnt[k]?` <span class="segn">${cnt[k]}</span>`:''}</button>`).join('')}</div></div>
+   <div class="seg" role="tablist">${[['recibidas','Recibidas'],['enviadas','Enviadas'],...(S.rondasOff?[]:[['rondas','Rondas']]),['chats','Chats']].map(([k,l])=>`<button type="button" role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" data-a="act" data-v="${k}">${l}${cnt[k]?` <span class="segn">${cnt[k]}</span>`:''}</button>`).join('')}</div></div>
    <div class="scroll pad">${body}<div style="height:20px"></div></div>${tabsbar('actividad')}`);},
 
 salud:()=>{const s=S.salud;const d=DR[s.drink];const p=S.people[s.peer]||{};const ph=(S.photos[s.peer]||[])[0];
-  const line=s.role==='sender'?`${first(p.name)} aceptó tu ${d.n}.`:s.crossed?`${first(p.name)} ya te había invitado un ${d.n}.`:`Aceptaste el ${d.n} de ${first(p.name)}.`;
+  const line=s.ronda?(s.role==='sender'?`Elegiste a ${first(p.name)} para tu ronda.`:`${first(p.name)} te eligió en su ronda.`):s.role==='sender'?`${first(p.name)} aceptó tu ${d.n}.`:s.crossed?`${first(p.name)} ya te había invitado un ${d.n}.`:`Aceptaste el ${d.n} de ${first(p.name)}.`;
   return shell('saludscr',d.c,`<div class="scroll pad" style="text-align:center">
     <div class="clink sm"><img src="${img(s.drink)}" alt="${d.n}"><img src="${img(sig(S.me.style))}" alt=""><span class="ring"></span></div>
     <h1 class="salud" aria-label="¡Salud!">${[...'¡Salud!'].map((ch,i)=>`<span style="--i:${i}">${ch}</span>`).join('')}</h1>
@@ -422,13 +459,46 @@ salud:()=>{const s=S.salud;const d=DR[s.drink];const p=S.people[s.peer]||{};cons
 
 chat:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m)return V.actividad();const pid=peerOf(m);const p=S.people[pid]||{};const d=DR[m.drink];const list=S.msgs[m.id]||[];const ph=(S.photos[pid]||[])[0];
   return shell('',d.c,`<div class="chathead pad"><button class="iconbtn" data-a="back" aria-label="Volver" type="button">${I('back')}</button><button type="button" class="avbtn" data-a="sheet" data-v="photo" aria-label="Ver foto">${photoAv(ph,p,40)}</button><div class="grow"><b>${esc(first(p.name))}${p.age?', '+p.age:''}</b><span>${esc(p.district||'')}</span></div>
-    <button class="iconbtn glass" data-a="sheet" data-v="chatmenu" type="button" aria-label="Más opciones">${I('dots')}</button></div>
-  <div class="scroll pad"><div class="msgs" id="msgs">
-    <div class="sys">Brindaron con ${d.n}</div>
-    ${list.map(msg).join('')}
-    ${m.closed?'<div class="sys">Este brindis terminó</div>':''}
-  </div></div>
+    ${m.closed?'':`<button class="iconbtn glass" data-a="plan-new" type="button" aria-label="Proponer salida">${I('cal')}</button>`}<button class="iconbtn glass" data-a="sheet" data-v="chatmenu" type="button" aria-label="Más opciones">${I('dots')}</button></div>
+  <div class="scroll pad"><div class="msgs" id="msgs">${chatBody(m)}</div></div>
   ${m.closed?'':`<div class="composer pad" id="composer">${composer()}</div>`}`);},
+
+plan:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m)return V.actividad();const p=S.people[peerOf(m)]||{};const P=S.P;const chip=(k,v,l)=>`<button type="button" class="chip ${P[k]===v?'on':''}" data-a="plan" data-k="${k}" data-v="${esc(v)}" aria-pressed="${P[k]===v}">${l||esc(v)}</button>`;
+  return shell('',DR[m.drink].c,`${topbar('Proponer salida')}
+  <div class="scroll pad">
+    <h1 class="h2">Una salida con <em>${first(p.name)}</em></h1>
+    <div class="sec"><span class="eyebrow">¿Qué plan?</span><div class="chips">${['Tragos','Café','Cena','Caminar'].map(o=>chip('type',o)).join('')}</div></div>
+    <div class="sec"><span class="eyebrow">¿Dónde?</span><div class="chips">${planPlaces(P.type,p).map(o=>chip('place',o)).join('')}</div>
+      <div class="field" style="margin-top:10px"><label for="pplace">Lugar</label><input id="pplace" data-p="place" maxlength="60" value="${esc(P.place)}" placeholder="O escribe uno que te guste" autocomplete="off"></div></div>
+    <div class="sec"><span class="eyebrow">¿Cuándo?</span><div class="chips">${planWhens().map(o=>chip('when',o,whenTxt(o))).join('')}</div></div>
+    <div class="note" style="margin-top:20px">${I('shield')}<span>Para la primera vez, mejor un lugar público y concurrido. Martini nunca comparte tu ubicación.</span></div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="foot pad"><button class="btn btn-primary" id="pgo" data-a="send-plan" type="button" ${P.place.trim()&&P.when?'':'disabled'}>Enviar propuesta</button></div>`);},
+
+'ronda-new':()=>{const R=S.R;const mine=Object.entries(S.me.inv||{}).filter(([,n])=>n>0).map(([k])=>k);const d=R.d?DR[R.d]:null;const c=d?d.c:'#E6C27A';
+  return shell('',c,`${topbar('Abrir una ronda')}
+  <div class="scroll pad">
+    <h1 class="h2">Lanza un plan y <em>deja que se apunten</em></h1>
+    <div class="sec"><label class="eyebrow" for="rplan" style="display:block;margin-bottom:10px">Tu plan</label><textarea id="rplan" class="ta" maxlength="120" data-r="plan" placeholder="¿Qué te provoca hacer?">${esc(R.plan)}</textarea>
+      <div class="chips" style="margin-top:10px">${Object.keys(RPLANS).map(t=>`<button type="button" class="chip" data-a="rplan" data-v="${t}">${t}</button>`).join('')}</div></div>
+    <div class="sec"><span class="eyebrow">El trago que acompaña tu plan</span>${mine.length?`<div class="grid2">${mine.map(k=>{const x=DR[k];const on=R.d===k;return `<button type="button" class="dcard ${on?'on':''}" style="--c:${x.c}" data-a="rdrink" data-v="${k}" aria-pressed="${on}"><div class="im"><img src="${img(k)}" alt="">${tier(x.tier)}</div><div class="tx"><b>${x.n}</b><div class="tg">${x.t}</div></div></button>`;}).join('')}</div>`:'<p class="small muted" style="margin:0">Tu barra está vacía por hoy. Cuando un trago vuelva, abre tu ronda.</p>'}</div>
+    <div class="sec" style="text-align:center"><span class="eyebrow" style="display:block;text-align:left;margin-bottom:14px">Dilo con tu voz, si quieres</span>${voiceBlock('ronda',R.voice,c)}</div>
+    <p class="small dim" style="margin-top:18px">Tu ronda dura 24 horas. Si no eliges a nadie, el trago vuelve a tu barra.</p>
+    <div style="height:16px"></div>
+  </div>
+  <div class="foot pad"><button class="btn btn-primary" id="rgo" data-a="publish-ronda" type="button" ${rondaOK()&&!S.busy?'':'disabled'}>${S.busy?'Abriendo…':'Abrir ronda'}</button></div>`);},
+
+'ronda-mine':()=>{const R=S.myRonda;if(!R)return V.personas();const d=DR[R.drink];const ap=R.ap;
+  return shell('',d.c,`${topbar('Tu ronda')}
+  <div class="scroll pad">
+    <div class="card ronda" style="margin-top:4px"><div class="foot2"><span class="eyebrow">Abierta</span>${ice(R.created_at,24)}</div><p class="plan-t" style="margin:0">${esc(R.plan)}</p><div class="drinkrow"><img src="${img(R.drink)}" alt=""><div style="flex:1;min-width:0"><span class="small dim">Tu trago para esta ronda</span><b>${d.n}</b></div>${tier(d.tier)}</div></div>
+    <div class="sec"><span class="eyebrow">${ap.length?`${ap.length===1?'Se apuntó 1 persona':`Se apuntaron ${ap.length} personas`} · solo tú lo ves`:'Esperando a que alguien se apunte'}</span>
+      <div class="card" style="padding:2px 16px">${ap.length?ap.map(a=>{const p=S.people[a.user_id]||{};const x=R.intros[a.user_id]||{};return `<div class="apunt">${veilAv(p,46)}<div class="grow"><b>${esc(p.name)}, ${p.age||''}</b><span>${esc(p.district||'')} · ${esc(p.style||'')}</span>${x.intro_voice?`<div style="margin-top:8px">${vn(x.intro_voice,x.intro_secs,x.intro_peaks,false,'ronda')}</div>`:''}${p.bio?`<div class="transcript">“${esc(p.bio)}”</div>`:''}</div><button class="btn btn-primary btn-sm" data-a="choose" data-v="${a.user_id}" type="button">Elegir</button></div>`;}).join(''):'<div class="empty" style="padding:24px 0">Tu ronda ya está en Descubrir. Te avisamos cuando alguien se apunte.</div>'}</div></div>
+    ${ap.length?'<p class="small dim" style="margin-top:12px">A quienes no elijas no les llega ningún rechazo.</p>':''}
+    <div style="height:16px"></div>
+  </div>
+  <div class="foot pad"><button class="btn btn-ghost" data-a="row" data-v="sheet:ronda-close" type="button">Cerrar mi ronda</button></div>`);},
 
 bar:()=>{const t=S.barTab;let body='';
   if(t==='carta'){const card=k=>{const d=DR[k];const have=(S.me.inv||{})[k];return `<button type="button" class="dcard" style="--c:${d.c}" data-a="want" data-v="${k}"><div class="im"><img src="${img(k)}" alt="" loading="lazy">${tier(d.tier)}${have>1?`<span class="cnt">x${have}</span>`:''}</div><div class="tx"><b>${d.n}</b><div class="tg">${d.t}</div><div class="pr">${have?'En tu barra':money(PRICE[d.tier])}</div></div></button>`;};
@@ -450,6 +520,8 @@ perfil:()=>{const u=S.me;const s=STY[u.style]||STY.Mystery;const ph=S.myPhoto?.u
     </div>
     <button type="button" class="card mebio" data-a="sheet" data-v="bio">${u.bio?`“${esc(u.bio)}”`:'<span class="muted">Escribe tu frase</span>'}${I('edit','s')}</button>
     <div class="sec"><span class="eyebrow">Tu brindis de presentación</span><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${u.intro_voice?vn(u.intro_voice,u.intro_secs,u.intro_peaks,true,'perfil'):''}<button class="chip" type="button" data-a="edit-intro">${u.intro_voice?'Grabar otro':'Grabar mi brindis'}</button></div></div>
+    ${S.matches.length||S.nrecv?`<div class="sec stats"><div class="card stat"><b>${S.nrecv}</b><span>Tragos recibidos</span></div><div class="card stat"><b>${S.matches.length}</b><span>Brindis</span></div><div class="card stat"><b>${u.cheers||0}</b><span>Te aceptaron</span></div></div>`:''}
+    ${S.matches.length?`<div class="sec"><span class="eyebrow">Tu colección</span><div class="coll">${[...new Set(S.matches.map(m=>m.drink))].slice(0,8).map(k=>`<img src="${img(k)}" alt="${DR[k].n}">`).join('')}</div></div>`:''}
     <div class="sec card list">
       ${[['shield','Términos y privacidad','sheet:terms'],['out','Cerrar sesión','logout'],['x','Eliminar mi cuenta','sheet:delete']].filter(Boolean).map(([ic,l,a])=>`<button type="button" class="row" data-a="row" data-v="${a}">${I(ic)}<span class="grow"><b style="font-weight:500">${l}</b></span><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg></button>`).join('')}
     </div>
@@ -458,13 +530,16 @@ perfil:()=>{const u=S.me;const s=STY[u.style]||STY.Mystery;const ph=S.myPhoto?.u
   </div>${tabsbar('perfil')}`);}
 };
 
-function voiceBlock(key,v,c){const max=key==='intro'||key==='inv'?MAXV:MAXC;
+function voiceBlock(key,v,c){const max=key==='chat'?MAXC:MAXV;
   if(v&&v.on)return `${liveBars(c)}<div class="num muted rect" id="rect" style="margin-top:6px">0:00 / 0:${max}</div>
     <button class="recbtn on" data-a="rec" data-v="${key}" type="button" aria-label="Detener"><span class="sq"></span></button><div class="small dim" style="margin-top:10px">Toca para detener</div>`;
   if(v&&(v.blob||v.path))return `<div class="recdone">${vn(v.url||v.path,v.secs,v.peaks,true,'preview')}<button class="chip" type="button" data-a="rec-again" data-v="${key}">Grabar otra vez</button></div>`;
   return `<button class="recbtn" data-a="rec" data-v="${key}" type="button" aria-label="Grabar">${I('mic')}</button><div class="small dim" style="margin-top:10px">Toca para grabar</div>`;}
 
-function msg(m){const me=m.sender===uid();const f=me?'me':'them';const st=m.pending?' sending':m.failed?' failed':'';
+function msg(m){const me=m.sender===uid();const f=me?'me':'them';const st=m.pending?' sending':m.failed?' failed':'';const pl=PL(m.body);
+  if(pl&&pl.k!=='plan'){const mt=S.matches.find(x=>x.id===m.match_id);const pn=mt?first((S.people[peerOf(mt)]||{}).name):'';return `<div class="sys">${pl.k==='ok'?(me?'Confirmaste la salida':`${pn} confirmó la salida`):'La salida quedó para otro día'}</div>`;}
+  if(pl){const ps=planState(S.msgs[m.match_id]||[],m.id);return `<div class="m ${f}${st}" ${m.failed?`data-a="retry" data-v="${m.id}"`:''}><div class="plan"><div class="ph"><span class="eyebrow">Propuesta de salida</span><b>${esc(pl.type)}</b></div><div class="pb"><div>${I('pin','s')} ${esc(pl.place)}</div><div>${I('cal','s')} ${whenTxt(pl.when)}</div>${ps==='ok'?`<div style="color:var(--mint)">${I('check','s')} Confirmada</div>`:!ps&&me&&!m.failed?'<div class="dim">Esperando su respuesta</div>':''}</div>
+    ${ps==='ok'?`<div class="pacts"><button type="button" class="btn btn-glass btn-sm" data-a="plan-share" data-v="${m.id}">${I('shield','s')} Avisar a un contacto</button></div>`:!ps&&!me?`<div class="pacts two"><button type="button" class="btn btn-glass btn-sm" data-a="plan-ans" data-v="no" data-id="${m.id}">Otro día</button><button type="button" class="btn btn-primary btn-sm" data-a="plan-ans" data-v="ok" data-id="${m.id}">Me apunto</button></div>`:''}</div>${m.failed?'<span class="mfail">No se envió. Toca para reintentar.</span>':''}</div>`;}
   if(m.voice)return `<div class="m ${f}${st}" ${m.failed?`data-a="retry" data-v="${m.id}"`:''}>${vn(m.voice,m.voice_secs,m.voice_peaks,me,'chat')}${m.failed?'<span class="mfail">No se envió. Toca para reintentar.</span>':''}</div>`;
   return `<div class="m ${f}${st}" ${m.failed?`data-a="retry" data-v="${m.id}"`:''}><div class="txt">${esc(m.body)}</div>${m.failed?'<span class="mfail">No se envió. Toca para reintentar.</span>':''}</div>`;}
 function composer(){const r=S.cmic;return r?`<div class="recline"><i class="d"></i><span id="cmt" class="num">0:00</span><span class="livemini" id="live">${Array.from({length:28},()=>'<i></i>').join('')}</span></div><button class="iconbtn" data-a="cmic-x" type="button" aria-label="Cancelar">${I('x')}</button><button class="mic on" data-a="cmic" type="button" aria-label="Enviar nota de voz">${I('send','s')}</button>`:
@@ -485,6 +560,7 @@ const SHEETS={
   terms:()=>sheet('Términos y privacidad',`<div class="h2" style="font-size:var(--t-head-l)">Términos y privacidad</div><p class="small muted" style="margin:10px 0 0;line-height:1.6">${esc(TXT.terms)}</p><div class="foot" style="padding-inline:0">${cancel('Entendido')}</div>`),
   bio:()=>sheet('Tu frase',`<div class="h2" style="font-size:var(--t-head-l)">Tu frase</div><div class="field area" style="margin-top:14px"><textarea id="biof" maxlength="120" rows="3" placeholder="Algo que dirías en la barra…">${esc(S.me.bio||'')}</textarea></div><div class="foot" style="padding-inline:0"><button class="btn btn-primary" data-a="save-bio" type="button">Guardar</button>${cancel()}</div>`),
   delete:()=>sheet('Eliminar cuenta',`<div class="h2" style="font-size:var(--t-head-l)">¿Eliminar tu cuenta?</div><p class="small muted" style="margin:8px 0 0">Se borran tu perfil, tus tragos y tus chats. No se puede deshacer.</p><div class="foot" style="padding-inline:0"><button class="btn btn-glass danger" data-a="delete-go" type="button">Eliminar</button>${cancel('Me quedo')}</div>`),
+  'ronda-close':()=>{const R=S.myRonda||{};return sheet('Cerrar ronda',`<div class="h2" style="font-size:var(--t-head-l)">¿Cerrar tu ronda?</div><p class="small muted" style="margin:8px 0 0">Tu ${DR[R.drink]?DR[R.drink].n:'trago'} vuelve a tu barra. A quienes se apuntaron no les llega ningún aviso.</p><div class="foot" style="padding-inline:0"><button class="btn btn-glass" data-a="ronda-close" type="button">Cerrar ronda</button>${cancel('Sigue abierta')}</div>`);},
   install:()=>sheet('Instalar',`<div class="h2" style="font-size:var(--t-head-l)">Ten la barra a un toque</div>
     <div class="card howto" style="margin-top:14px">${isIOS?`<div>${I('share')}<span>En Safari, toca <b>Compartir</b>.</span></div><div>${I('plus')}<span>Elige <b>Agregar a inicio</b>.</span></div>`:`<div>${I('dots')}<span>Abre el menú del navegador.</span></div><div>${I('plus')}<span>Toca <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>.</span></div>`}</div>
     <div class="foot" style="padding-inline:0">${S.installEvt?`<button class="btn btn-primary" data-a="install-go" type="button">Instalar</button>`:''}${cancel('Entendido')}</div>`)
@@ -511,46 +587,87 @@ async function loadMatches(){const {data}=await sb.from('matches').select('*').o
     (ls||[]).forEach(l=>{const m=S.matches.find(x=>x.id===l.match_id);if(m&&!m.last)m.last=l;});
     S.matches.sort((a,b)=>((b.last||b).created_at).localeCompare((a.last||a).created_at));}
   // ¡Salud! pendientes para quien invitó (al abrir la app, uno tras otro)
-  const seen=LS.get('salud',[]);S.saludQ=S.matches.filter(m=>m.a===uid()&&!m.closed&&!seen.includes(m.id)&&(Date.now()-new Date(m.created_at))<3*864e5).map(m=>m.id);}
-async function loadAll(){await sb.rpc('expire_invites');await Promise.all([loadMe(),loadDeck(),loadInvites(),loadMatches(),loadMyPhoto()]);
+  const seen=LS.get('salud',[]);S.saludQ=S.matches.filter(m=>(m.a===uid()||(m.b===uid()&&m.ronda_id))&&!m.closed&&!seen.includes(m.id)&&(Date.now()-new Date(m.created_at))<3*864e5).map(m=>m.id);}
+async function loadMyRonda(){const {data,error}=await sb.from('rondas').select('*').eq('owner',uid()).eq('status','open').maybeSingle();if(error)throw error;
+  if(!data||Date.now()-new Date(data.created_at)>864e5){S.myRonda=null;return;}
+  const {data:ap}=await sb.from('apuntes').select('user_id,created_at').eq('ronda_id',data.id).order('created_at');const ids=(ap||[]).map(a=>a.user_id);const intros={};
+  if(ids.length){const [,pv]=await Promise.all([loadPeople(ids),sb.from('profiles').select('id,intro_voice,intro_secs,intro_peaks').in('id',ids)]);(pv.data||[]).forEach(x=>{intros[x.id]=x;});signed('voice',(pv.data||[]).map(x=>x.intro_voice));}
+  S.myRonda={...data,ap:(ap||[]).filter(a=>S.people[a.user_id]),intros};}
+async function loadRondas(){try{const [f,h]=await Promise.all([sb.rpc('rondas_feed'),sb.rpc('ronda_hands'),loadMyRonda()]);if(f.error)throw f.error;S.rondas=f.data||[];S.hands=h.data??3;S.rondasOff=false;signed('voice',S.rondas.map(r=>r.voice));
+    S.rondas.forEach(r=>{if(!S.people[r.owner])S.people[r.owner]={id:r.owner,name:r.name,age:r.age,district:r.district,style:r.style,veil:r.veil};});
+  }catch(e){if(!S.rondas.length&&!S.myRonda){S.rondasOff=true;S.dview='personas';if(S.act==='rondas')S.act='recibidas';}}}
+async function loadStats(){try{const {count}=await sb.from('invites').select('id',{count:'exact',head:true}).eq('to_id',uid());S.nrecv=count||0;}catch(e){}}
+async function loadAll(){await sb.rpc('expire_invites');await Promise.all([loadMe(),loadDeck(),loadInvites(),loadMatches(),loadMyPhoto(),loadRondas(),loadStats()]);
   sb.from('profiles').update({last_seen:new Date().toISOString()}).eq('id',uid()).then(()=>{});}
 async function loadChat(id){const {data}=await sb.from('messages').select('*').eq('match_id',id).order('created_at').limit(500);S.msgs[id]=data||[];await signed('voice',S.msgs[id].map(m=>m.voice));}
 
 function showSalud(mid,extra={}){const m=S.matches.find(x=>x.id===mid);if(!m)return;const role=m.a===uid()?'sender':'receiver';
-  S.salud={drink:m.drink,peer:peerOf(m),match:m.id,role,crossed:m.crossed&&role==='receiver',gift:role==='sender'?m.gift:null,...extra};
+  S.salud={drink:m.drink,peer:peerOf(m),match:m.id,role,crossed:m.crossed&&role==='receiver',gift:role==='sender'?m.gift:null,ronda:!!m.ronda_id,...extra};
   LS.set('salud',[...LS.get('salud',[]),m.id].slice(-300));S.saludQ=S.saludQ.filter(x=>x!==m.id);
   const ph=(S.photos[S.salud.peer]||[])[0];preload([ph]).then(()=>{});track('salud_seen',{role});
-  S.stack=S.screen==='salud'?S.stack:[...S.stack,S.screen].filter(x=>!['sent','record','pick','person','salud'].includes(x));S.screen='salud';S.sheet=null;render('fade');clink();}
+  S.stack=S.screen==='salud'?S.stack:[...S.stack,S.screen].filter(x=>!['sent','record','pick','person','salud','ronda-mine','ronda-new'].includes(x));S.screen='salud';S.sheet=null;render('fade');clink();}
 function nextSalud(){if(S.saludQ.length){showSalud(S.saludQ[0]);return true;}return false;}
 
 let channel=null;
 function subscribe(){if(channel)sb.removeChannel(channel);
   channel=sb.channel('me-'+uid())
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'invites',filter:`to_id=eq.${uid()}`},async({new:r})=>{await loadPeople([r.from_id]);if(r.voice)signed('voice',[r.voice]);S.recv=[r,...S.recv.filter(x=>x.id!==r.id)];banner('Martini','Alguien quiere brindar contigo','go-act','recibidas');if(live.includes(S.screen))rerender();})
-  .on('postgres_changes',{event:'INSERT',schema:'public',table:'matches',filter:`a=eq.${uid()}`},async({new:m})=>{if(S.matches.some(x=>x.id===m.id))return;S.matches.unshift(m);const pid=peerOf(m);await Promise.all([loadPeople([pid]),loadPhotosOf([pid]),loadMe()]);const s=S.sent.find(x=>x.id===m.invite_id);if(s)s.status='accepted';
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'matches',filter:`a=eq.${uid()}`},async({new:m})=>{if(m.ronda_id||S.matches.some(x=>x.id===m.id))return;S.matches.unshift(m);const pid=peerOf(m);await Promise.all([loadPeople([pid]),loadPhotosOf([pid]),loadMe()]);const s=S.sent.find(x=>x.id===m.invite_id);if(s)s.status='accepted';
     if(['record','pick','sent','salud'].includes(S.screen)||S.busy){S.saludQ.push(m.id);const p=S.people[pid]||{};banner('¡Salud!',`${first(p.name)} aceptó tu ${DR[m.drink].n}`,'open-salud',m.id);}else showSalud(m.id);})
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'matches',filter:`b=eq.${uid()}`},async({new:m})=>{if(!m.ronda_id||S.matches.some(x=>x.id===m.id))return;S.matches.unshift(m);const pid=peerOf(m);await Promise.all([loadPeople([pid]),loadPhotosOf([pid])]);S.rondas=S.rondas.filter(r=>r.id!==m.ronda_id);
+    if(['record','pick','sent','salud','ronda-new','plan'].includes(S.screen)||S.busy){S.saludQ.push(m.id);banner('¡Salud!',`${first((S.people[pid]||{}).name)} te eligió en su ronda`,'open-salud',m.id);}else showSalud(m.id);})
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'apuntes'},async({new:a})=>{if(a.user_id===uid()||!S.myRonda||a.ronda_id!==S.myRonda.id)return;try{await loadMyRonda();}catch(e){return;}
+    if(S.screen==='ronda-mine'){hap(8);rerender();}else{banner('Martini','Alguien se apuntó a tu ronda','go','ronda-mine');if(live.includes(S.screen))rerender();}})
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async({new:x})=>{const m=S.matches.find(y=>y.id===x.match_id);if(!m)return;
     if(x.voice)await signed('voice',[x.voice]);
     const l=S.msgs[x.match_id];if(l){if(l.some(y=>y.id===x.id))return;const tmp=l.findIndex(y=>y.pending&&y.sender===x.sender&&(y.body||null)===(x.body||null)&&!!y.voice===!!x.voice);if(tmp>=0&&x.sender===uid())return;l.push(x);}m.last=x;
     if(S.screen==='chat'&&S.chat===x.match_id){markRead(x.match_id);appendMsgs();if(x.sender!==uid())hap(8);}
-    else if(x.sender!==uid()){const p=S.people[x.sender]||{};banner(first(p.name)||'Martini',x.voice?'Te envió una nota de voz':x.body,'open-chat',x.match_id);if(live.includes(S.screen))rerender();}})
+    else if(x.sender!==uid()){const p=S.people[x.sender]||{};banner(first(p.name)||'Martini',x.voice?'Te envió una nota de voz':preview(x),'open-chat',x.match_id);if(live.includes(S.screen))rerender();}})
   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'matches'},({new:m})=>{const o=S.matches.find(y=>y.id===m.id);if(o){o.closed=m.closed;if(S.screen==='chat'&&S.chat===m.id)rerender();}})
   .subscribe();}
 const scrollChat=()=>{const s=$app.querySelector('.screen:not(.ghost) .scroll');if(s)s.scrollTop=s.scrollHeight;};
-function appendMsgs(){const box=document.getElementById('msgs');if(!box){rerender();return;}const had=box.querySelectorAll('.m').length;const m=S.matches.find(x=>x.id===S.chat);box.innerHTML=`<div class="sys">Brindaron con ${DR[m.drink].n}</div>${(S.msgs[S.chat]||[]).map(msg).join('')}${m.closed?'<div class="sys">Este brindis terminó</div>':''}`;const ms=box.querySelectorAll('.m');if(ms.length>had&&!calm())ms[ms.length-1].classList.add('new');scrollChat();}
+function appendMsgs(){const box=document.getElementById('msgs');if(!box){rerender();return;}const had=box.querySelectorAll('.m').length;const m=S.matches.find(x=>x.id===S.chat);box.innerHTML=chatBody(m);const ms=box.querySelectorAll('.m');if(ms.length>had&&!calm())ms[ms.length-1].classList.add('new');scrollChat();}
 
 /* ================= ACCIONES ================= */
 const draft=()=>({name:'',birth:'',district:'',gender:'',interest:'',style:'Mystery',bio:'',photo:null,intro:null});
-async function startRec(key){const c=key==='inv'?DR[S.pick].c:'#86E3AE';
-  const set=v=>{if(key==='inv')S.voice=v;else S.D.intro=v;};set({on:true});rerender();
+async function startRec(key){
+  const set=v=>{if(key==='inv')S.voice=v;else if(key==='ronda')S.R.voice=v;else S.D.intro=v;};set({on:true});rerender();
   const ok=await recStart(MAXV,(t,s)=>paintLive(t,s,MAXV),()=>A.rec(key));
   if(!ok){set(null);rerender();}}
-async function finishRec(key){const r=await recStop();if(key==='inv')S.voice=r;else S.D.intro=r;rerender();}
+async function finishRec(key){const r=await recStop();if(key==='inv')S.voice=r;else if(key==='ronda'){if(S.R)S.R.voice=r;}else S.D.intro=r;rerender();}
 const removeFromDeck=id=>{const i=S.deck.findIndex(x=>x.id===id);if(i<0)return;S.deck.splice(i,1);if(S.di>i)S.di--;if(S.deck.length)S.di=S.di%S.deck.length;else S.di=0;};
 
 const A={
   back:()=>back(),
   tab:v=>tab(v),
+  go:v=>go(v),
+  dview:v=>{if(S.dview===v)return;S.dview=v;rerender();swapIn();if(v==='rondas')loadRondas().then(()=>{if(S.screen==='personas'&&S.dview==='rondas')rerender();});},
+  'new-ronda':()=>{if(S.myRonda)return go('ronda-mine');S.R={plan:'',d:Object.keys(S.me.inv||{}).find(k=>S.me.inv[k]>0)||null,voice:null};go('ronda-new');},
+  rplan:v=>{S.R.plan=RPLANS[v];rerender();},
+  rdrink:v=>{S.R.d=v;rerender();},
+  'publish-ronda':async()=>{const R=S.R;if(S.busy||!rondaOK())return;if(moneyTalk(R.plan))return toast(TXT.money,'shield');S.busy=true;rerender();hap(10);
+    try{const v=R.voice&&R.voice.blob?R.voice:null;let vp=null;if(v){vp=await upload('voice',v.blob,v.ext);URLS.set('voice'+vp,v.url);}
+      const {error}=await sb.rpc('open_ronda',{p_plan:R.plan.trim(),p_drink:R.d,p_voice:vp,p_secs:v?v.secs:null,p_peaks:v?v.peaks:null});if(error)throw error;
+      await Promise.all([loadMe(),loadMyRonda()]);S.busy=false;S.R=null;S.dview='rondas';S.stack=['personas'];go('ronda-mine',false);toast('Tu ronda ya está en Descubrir','glass');
+    }catch(e){S.busy=false;rerender();err(e,'No se pudo abrir la ronda. Tu trago sigue en tu barra.');}},
+  apuntar:async v=>{const r=S.rondas.find(x=>x.id===v);if(!r)return;if(r.joined)return toast('Ya te apuntaste a esta ronda','check');if(S.hands<=0)return toast('Ya usaste tus 3 “Me apunto” de hoy. Mañana tienes más.','clock');
+    r.joined=true;S.hands--;rerender();
+    try{const {data,error}=await sb.rpc('join_ronda',{p_id:v});if(error)throw error;if(typeof data==='number')S.hands=data;toast(`Te apuntaste a la ronda de ${first(r.name)}. Si te elige, ¡salud!`,'glass');}
+    catch(e){r.joined=false;S.hands++;err(e);await loadRondas();rerender();}},
+  choose:async(v,el)=>{const R=S.myRonda;if(!R||S.busy)return;S.busy=true;el.disabled=true;el.textContent='Brindando…';
+    try{const {data:mid,error}=await sb.rpc('choose_ronda',{p_id:R.id,p_user:v});if(error)throw error;S.myRonda=null;
+      await Promise.all([loadMatches(),loadMe()]);await loadPhotosOf([v]);S.busy=false;S.stack=['personas'];showSalud(mid);
+    }catch(e){S.busy=false;err(e);try{await loadMyRonda();}catch(x){}rerender();}},
+  'ronda-close':async()=>{const R=S.myRonda;if(!R)return;try{const {error}=await sb.rpc('close_ronda',{p_id:R.id});if(error)throw error;S.myRonda=null;S.sheet=null;await loadMe();S.stack=[];tab('personas');toast(`Tu ${DR[R.drink].n} volvió a tu barra.`,'return');}catch(e){err(e);}},
+  'plan-new':()=>{S.P={type:'Tragos',place:'',when:''};go('plan');},
+  plan:(v,el)=>{const k=el.dataset.k;S.P[k]=v;if(k==='type')S.P.place='';rerender();},
+  'send-plan':()=>{const P=S.P;const place=P.place.trim().replace(/[|#]/g,' ');if(!place||!P.when)return;if(moneyTalk(place))return toast(TXT.money,'shield');back();sendMsg({body:`#plan|${P.type}|${place}|${P.when}`});},
+  'plan-ans':(v,el)=>{sendMsg({body:`#plan-${v}|${el.dataset.id}`});if(v==='ok')hap([10,30,10]);},
+  'plan-share':async v=>{const m=S.matches.find(x=>x.id===S.chat);const x=(S.msgs[S.chat]||[]).find(y=>y.id===v);const pl=x&&PL(x.body);if(!m||!pl)return;const n=String((S.people[peerOf(m)]||{}).name||'').split(' ')[0];
+    const text=`Voy a salir con ${n}, a quien conocí en Martini. ${pl.type}: ${pl.place}, ${whenTxt(pl.when)}. Te escribo cuando llegue a casa.`;
+    try{if(navigator.share){await navigator.share({text});return;}}catch(e){return;}
+    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');},
+  checkin:(v,el)=>{const d=LS.get('checkin',{});d[el.dataset.id]=v;LS.set('checkin',d);appendMsgs();toast(v==='great'?'¡Qué bueno! Ojalá se repita.':v==='bad'?'Gracias por contarnos. Tu seguridad es primero.':'Gracias por contarnos. Queda entre nosotros.',v==='great'?'glass':'shield');},
   'to-onb':()=>{S.ob=0;go('onboarding',false);},
   'ob-next':()=>{if(S.ob<OB.length-1){S.ob++;rerender();}else{S.auth='signup';S.authStep=S.code?'account':'code';go('auth');}},
   'ob-go':v=>{S.ob=+v;rerender();},
@@ -561,8 +678,8 @@ const A={
   'conocer-next':()=>go('style'),
   next:v=>go(v),
   'foto-next':()=>{if(moneyTalk(S.D.bio))return toast(TXT.money,'shield');go('brindis');},
-  rec:async v=>{const cur=v==='inv'?S.voice:S.D.intro;if(cur&&cur.on)await finishRec(v);else await startRec(v);},
-  'rec-again':v=>{if(player)player.pause();if(v==='inv')S.voice=null;else S.D.intro=null;rerender();},
+  rec:async v=>{const cur=v==='inv'?S.voice:v==='ronda'?S.R.voice:S.D.intro;if(cur&&cur.on)await finishRec(v);else await startRec(v);},
+  'rec-again':v=>{if(player)player.pause();if(v==='inv')S.voice=null;else if(v==='ronda')S.R.voice=null;else S.D.intro=null;rerender();},
   tpl:v=>{S.tpl=S.tpl===+v?null:+v;rerender();},
   finish:async v=>{const D=S.D;if(S.busy)return;if(v==='skip')D.intro=null;S.busy=true;rerender();
     try{const {error}=await sb.from('profiles').insert({id:uid(),name:D.name.trim(),birth:D.birth,gender:D.gender,interest:D.interest,district:D.district,style:D.style,bio:D.bio.trim(),veil:D.photo.veil,code_used:S.code});
@@ -629,7 +746,7 @@ const A={
   'want-go':()=>{const k=S.sheet.v;track('drink_wanted',{drink:k,tier:DR[k].tier});S.sheet=null;rerender();toast('Anotado. Te avisamos.','bell');},
   sheet:(v,el)=>{let p=S.target;if(S.screen==='chat'){const m=S.matches.find(x=>x.id===S.chat);p={id:peerOf(m),...S.people[peerOf(m)]};}if(v==='safety-inv'){p={id:el.dataset.id,...S.people[el.dataset.id],name:'esta persona'};v='safety';}S.sheet={k:v,p};rerender();},
   'close-sheet':()=>{const els=$app.querySelectorAll('.sheet,.scrim,.bigphoto');if(!els.length||calm()){S.sheet=null;rerender();return;}els.forEach(e=>e.classList.add('closing'));setTimeout(()=>{S.sheet=null;rerender();},200);},
-  block:async v=>{try{const {error}=await sb.rpc('block_user',{p_id:v});if(error)throw error;track('block');removeFromDeck(v);S.recv=S.recv.filter(x=>x.from_id!==v);S.sheet=null;
+  block:async v=>{try{const {error}=await sb.rpc('block_user',{p_id:v});if(error)throw error;track('block');removeFromDeck(v);S.recv=S.recv.filter(x=>x.from_id!==v);S.rondas=S.rondas.filter(r=>r.owner!==v);if(S.myRonda)S.myRonda.ap=S.myRonda.ap.filter(a=>a.user_id!==v);S.sheet=null;
       toast('Listo. Ya no se verán en Martini.','lock');await loadMatches();S.stack=[];tab(S.screen==='chat'||S.screen==='actividad'?'actividad':'personas');}catch(e){err(e);}},
   report:v=>{S.sheet={k:'report',p:S.sheet?.p,v};rerender();},
   'report-go':async reason=>{const v=S.sheet.v;const ctx=S.screen==='chat'?'chat':S.screen==='actividad'?'invitation':'person';
@@ -666,7 +783,7 @@ const AFTER={
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||el.disabled)return;if(el.closest('.ghost'))return;
   hap(8);if(el.classList.contains('banner'))el.remove();const a=A[el.dataset.a];if(a){e.preventDefault();e.stopPropagation();a(el.dataset.v,el);}});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[role="button"][data-a]')){e.preventDefault();e.target.click();}});
-document.addEventListener('input',e=>{const k=e.target.dataset.in;if(!k||!S.D)return;S.D[k]=e.target.value;if(k==='bio'){const c=document.getElementById('bioc');if(c)c.textContent=e.target.value.length+'/120';}if(k==='district'||k==='birth')rerender();});
+document.addEventListener('input',e=>{const ds=e.target.dataset;if(ds.r&&S.R){S.R[ds.r]=e.target.value;const b=document.getElementById('rgo');if(b)b.disabled=!rondaOK();return;}if(ds.p&&S.P){S.P[ds.p]=e.target.value;const b=document.getElementById('pgo');if(b)b.disabled=!(S.P.place.trim()&&S.P.when);return;}const k=ds.in;if(!k||!S.D)return;S.D[k]=e.target.value;if(k==='bio'){const c=document.getElementById('bioc');if(c)c.textContent=e.target.value.length+'/120';}if(k==='district'||k==='birth')rerender();});
 document.addEventListener('change',async e=>{if(!e.target.dataset.file||!e.target.files[0])return;try{S.D.photo=await prepPhoto(e.target.files[0]);rerender();}catch(x){toast('No pudimos abrir esa foto. Prueba con otra.','camera');}});
 document.addEventListener('submit',async e=>{e.preventDefault();const f=e.target;
   if(f.dataset.form==='txt'){const inp=f.querySelector('input');const t=inp.value.trim();if(!t)return;const m=S.matches.find(x=>x.id===S.chat);const early=m&&(Date.now()-new Date(m.created_at))<864e5;
@@ -697,7 +814,7 @@ document.addEventListener('click',e=>{if(swallow&&e.target.closest('#pcard')){e.
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();S.installEvt=e;});
 const offBand=()=>{let b=document.getElementById('offline');if(!navigator.onLine){if(!b){b=document.createElement('div');b.id='offline';b.className='offline';b.textContent=TXT.offline;$ph.appendChild(b);}}else if(b)b.remove();};
 window.addEventListener('online',()=>{offBand();if(S.me)refresh();});window.addEventListener('offline',offBand);
-async function refresh(){try{await Promise.all([loadInvites(),loadMatches(),loadMe()]);if(live.includes(S.screen))rerender();if(S.screen==='personas'||S.screen==='actividad')nextSalud();}catch(e){}}
+async function refresh(){try{await Promise.all([loadInvites(),loadMatches(),loadMe(),loadRondas()]);if(live.includes(S.screen))rerender();if(S.screen==='personas'||S.screen==='actividad')nextSalud();}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.me)refresh();});
 
 /* ================= ARRANQUE ================= */

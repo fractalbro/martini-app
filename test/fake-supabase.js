@@ -1,6 +1,6 @@
 // Cliente falso en memoria para la prueba de humo de la interfaz.
 (()=>{const ME='me-1',PX='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#a86"/><circle cx="200" cy="200" r="90" fill="#fdc"/></svg>');
-const db={session:null,profiles:[],photos:[],matches:[],messages:[],
+const db={session:null,profiles:[],photos:[],matches:[],messages:[],rondas:[],apuntes:[],
  invites:[{id:'i1',from_id:'p3',to_id:ME,drink:'mars',voice:'p3/v.m4a',voice_secs:9,voice_peaks:null,status:'pending',hidden:false,created_at:new Date(Date.now()-40*36e5).toISOString()}],
  people:[{id:'p1',name:'Fabiola',age:29,gender:'Mujer',district:'Barranco',style:'Mystery',bio:'Fiesta, fiesta y fiesta. Libre pensadora.',veil:PX,intro_voice:'p1/i.m4a',intro_secs:11,intro_peaks:null},
   {id:'p2',name:'Andrea',age:27,gender:'Mujer',district:'San Isidro',style:'Golden',bio:'Brunch los domingos, karaoke los jueves.',veil:null,intro_voice:null},
@@ -21,6 +21,14 @@ const rpcs={check_code:a=>a.p_code==='BARRA-01',expire_invites:()=>null,discover
  people:a=>db.people.filter(p=>a.p_ids.includes(p.id)),
  send_invite:a=>{const me=db.profiles[0];if(a.p_drink==='water')me.water_day=new Date().toLocaleDateString('en-CA',{timeZone:'America/Lima'});else delete me.inv[a.p_drink];const i={id:'s'+Math.random(),from_id:ME,to_id:a.p_to,drink:a.p_drink,voice:a.p_voice,status:'pending',hidden:false,created_at:new Date().toISOString()};db.invites.push(i);return {invite:i.id,crossed:false};},
  answer_invite:a=>{const i=db.invites.find(x=>x.id===a.p_id);if(!a.p_accept){i.hidden=true;return null;}i.status='accepted';const m={id:'m1',a:i.from_id,b:ME,drink:i.drink,invite_id:i.id,closed:false,crossed:false,gift:null,created_at:new Date().toISOString()};db.matches.push(m);db.photos.push({owner:i.from_id,path:i.from_id+'/p.jpg',pos:0});db.messages.push({id:'x1',match_id:'m1',sender:i.from_id,voice:i.voice,voice_secs:i.voice_secs,body:null,created_at:i.created_at});return m.id;},
+ rondas_feed:()=>[{id:'r1',owner:'p2',plan:'Viernes de jazz en Barranco. ¿Quién se anima a descubrir un bar nuevo conmigo?',drink:'aurora',voice:'p2/r.m4a',voice_secs:8,voice_peaks:null,created_at:new Date(Date.now()-5*36e5).toISOString(),joined:db.apuntes.some(x=>x.ronda_id==='r1'&&x.user_id===ME),name:'Andrea',age:27,district:'San Isidro',style:'Golden',veil:null},
+   {id:'r2',owner:'p1',plan:'Café y buena conversación el domingo por la tarde. Sin prisa.',drink:'onenight',voice:null,created_at:new Date(Date.now()-20*36e5).toISOString(),joined:false,name:'Fabiola',age:29,district:'Barranco',style:'Mystery',veil:PX}],
+ ronda_hands:()=>3-db.apuntes.filter(x=>x.user_id===ME).length,
+ join_ronda:a=>{db.apuntes.push({ronda_id:a.p_id,user_id:ME,created_at:new Date().toISOString()});return 3-db.apuntes.filter(x=>x.user_id===ME).length;},
+ open_ronda:a=>{const me=db.profiles[0];delete me.inv[a.p_drink];db.rondas.push({id:'rm',owner:ME,plan:a.p_plan,drink:a.p_drink,voice:a.p_voice,status:'open',created_at:new Date().toISOString()});db.apuntes.push({ronda_id:'rm',user_id:'p1',created_at:new Date().toISOString()},{ronda_id:'rm',user_id:'p2',created_at:new Date().toISOString()});return 'rm';},
+ choose_ronda:a=>{const r=db.rondas.find(x=>x.id===a.p_id);r.status='chosen';const now=Date.now(),iso=t=>new Date(t).toISOString();db.matches.push({id:'m2',a:ME,b:a.p_user,drink:r.drink,invite_id:null,ronda_id:r.id,closed:false,crossed:false,gift:null,created_at:iso(now)});db.photos.push({owner:a.p_user,path:a.p_user+'/p.jpg',pos:0});
+   db.messages.push({id:'y1',match_id:'m2',sender:ME,body:r.plan,voice:null,created_at:iso(now-9e5)},{id:'y2',match_id:'m2',sender:a.p_user,body:'#plan|Café|Un café en Barranco|'+iso(now-3*36e5),voice:null,created_at:iso(now-8e5)},{id:'y3',match_id:'m2',sender:ME,body:'#plan-ok|y2',voice:null,created_at:iso(now-7e5)},{id:'y4',match_id:'m2',sender:a.p_user,body:'#plan|Tragos|Un bar en Miraflores|'+iso(now+50*36e5),voice:null,created_at:iso(now-6e5)});return 'm2';},
+ close_ronda:()=>{db.rondas.forEach(r=>r.status='closed');return null;},
  block_user:()=>null,close_match:a=>{db.matches.forEach(m=>m.closed=true);return null;},delete_me:()=>null};
 window.supabase={createClient:()=>({
  auth:{getSession:()=>ok({session:db.session}),onAuthStateChange(){},signOut:()=>ok(null),

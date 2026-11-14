@@ -10,7 +10,7 @@ const srv=http.createServer((q,r)=>{let p=q.url.split('?')[0];if(p==='/')p='/ind
  const tap=async(sel,t)=>{const l=t?p.locator(sel,{hasText:t}):p.locator(sel);await l.first().click({timeout:5000});};
  const step=async(name,fn)=>{try{await fn();}catch(e){errs.push(`STEP ${name}: ${e.message.split('\n')[0]}`);await shot('FAIL-'+name);}};
  await p.goto('http://localhost:4599/?c=BARRA-01');await p.waitForTimeout(2300);await shot('onboarding');
- await step('onb',async()=>{await tap('[data-a=ob-next]');await tap('[data-a=ob-next]');await tap('[data-a=ob-next]');await shot('codigo');await tap('button[type=submit]');await shot('cuenta');
+ await step('onb',async()=>{await tap('[data-a=ob-next]');await tap('[data-a=ob-next]');await shot('onboarding-ronda');await tap('[data-a=ob-next]');await tap('[data-a=ob-next]');await shot('codigo');await tap('button[type=submit]');await shot('cuenta');
    await p.fill('#em','a@b.co');await p.fill('#pw','12345678');await p.check('input[name=ok]');await tap('button[type=submit]');await shot('sobre-ti');});
  await step('perfil',async()=>{await p.fill('#nm','Miguel');await p.fill('#bd','1991-05-12');await p.selectOption('#ds','Miraflores');await shot('sobre-ti-lleno');await tap('[data-a=about-next]');
    await tap('.chip','Hombre');await tap('.chip','Mujeres');await shot('conocer');await tap('[data-a=conocer-next]');await shot('estilo');await tap('[data-a=next]');
@@ -27,4 +27,11 @@ const srv=http.createServer((q,r)=>{let p=q.url.split('?')[0];if(p==='/')p='/ind
    await tap('[data-a=sheet][data-v=chatmenu]');await shot('chat-menu');await tap('.sheet [data-a=close-sheet]');await tap('[data-a=back]');await shot('chats');});
  await step('bar',async()=>{await tap('[data-a=tab][data-v=bar]');await shot('bar');await tap('.dcard','Ice Sweets');await shot('bar-pronto');await tap('.sheet [data-a=close-sheet]');await tap('[data-a=bartab][data-v=barra]');await shot('mi-barra');
    await tap('[data-a=tab][data-v=perfil]');await shot('perfil');await tap('[data-a=row][data-v="sheet:terms"]');await shot('terminos');});
+ await step('rondas',async()=>{await tap('.sheet [data-a=close-sheet]');await tap('[data-a=tab][data-v=personas]');await shot('descubrir-seg');await tap('[data-a=dview][data-v=rondas]');await shot('rondas');await tap('[data-a=apuntar]');await shot('rondas-apuntado');
+   await tap('[data-a=new-ronda]');await shot('ronda-nueva');await p.fill('#rplan','Sábado de terraza y buena música. ¿Quién se apunta?');await shot('ronda-nueva-lista');await tap('[data-a=publish-ronda]');await p.waitForTimeout(600);await shot('mi-ronda');await tap('[data-a=back]');
+   await tap('[data-a=tab][data-v=actividad]');await tap('[data-a=act][data-v=rondas]');await shot('actividad-rondas');await tap('[data-a=go][data-v=ronda-mine]');
+   await tap('[data-a=choose]');await p.waitForTimeout(2600);await shot('salud-ronda');await tap('[data-a=salud-later]');await tap('[data-a=tab][data-v=actividad]');await tap('[data-a=act][data-v=chats]');await shot('chats-2');await tap('[data-a=open-chat][data-v=m2]');await p.waitForTimeout(900);await shot('chat-salida');
+   await tap('[data-a=checkin][data-v=great]');await tap('[data-a=plan-ans][data-v=ok]');await shot('chat-salida-ok');
+   await tap('[data-a=plan-new]');await shot('proponer');await tap('.chip','Cena');await tap('[data-k=place]');await tap('[data-k=when]');await shot('proponer-lista');await tap('[data-a=send-plan]');await shot('chat-propuesta');
+   await tap('[data-a=back]');await tap('[data-a=tab][data-v=perfil]');await shot('perfil-numeros');});
  console.log(errs.length?errs.join('\n'):'SIN ERRORES');await b.close();srv.close();})();
