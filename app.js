@@ -628,7 +628,7 @@ const A={
     window.open('https://wa.me/?text='+encodeURIComponent(text+' '+url),'_blank');},
   feedback:()=>{track('feedback_tap');window.open(CFG.feedback,'_blank');},
   logout:async()=>{await sb.auth.signOut();location.replace('/');},
-  'delete-go':async()=>{try{const {error}=await sb.rpc('delete_me');if(error)throw error;await sb.auth.signOut();localStorage.clear();location.replace('/');}catch(e){err(e);}},
+  'delete-go':async()=>{try{for(const b of ['photos','voice']){const {data:fs}=await sb.storage.from(b).list(uid(),{limit:1000});if(fs&&fs.length)await sb.storage.from(b).remove(fs.map(f=>uid()+'/'+f.name));}const {error}=await sb.rpc('delete_me');if(error)throw error;await sb.auth.signOut();localStorage.clear();location.replace('/');}catch(e){err(e);}},
   'install-go':async()=>{const e=S.installEvt;S.sheet=null;rerender();if(e){e.prompt();S.installEvt=null;}},
   play:(v,el)=>play(el)
 };

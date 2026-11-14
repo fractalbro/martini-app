@@ -258,10 +258,9 @@ create or replace function public.close_match(p_id uuid) returns void language s
 $$;
 
 -- Eliminar cuenta: perfil, archivos, invitaciones y mensajes propios.
-create or replace function public.delete_me() returns void language plpgsql security definer set search_path = public, auth, storage as $$
+create or replace function public.delete_me() returns void language plpgsql security definer set search_path = public, auth as $$
 begin
-  delete from storage.objects where bucket_id in ('photos','voice') and (storage.foldername(name))[1] = auth.uid()::text;
-  delete from auth.users where id = auth.uid();
+  delete from auth.users where id = auth.uid(); -- los archivos los borra la app antes, por la API de Storage
 end $$;
 
 -- ========== DESCUBRIR (sin fotos, sin fecha de nacimiento) ==========
