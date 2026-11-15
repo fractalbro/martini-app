@@ -193,3 +193,13 @@ input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit;col
 .callav.quiet2::before,.callav.quiet2::after{animation:none;opacity:.35}
 .calltime.wait{font-size:var(--t-lead);font-weight:400;color:var(--muted);letter-spacing:0;margin-top:10px}
 .sys .i{width:13px;height:13px;vertical-align:-2px;margin-right:4px;color:var(--gold)}
+
+/* ============ Bar: compra de prueba y Socio ============ */
+.betarow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;margin-top:18px}
+.betarow s{color:var(--dim);font-variant-numeric:tabular-nums}
+.betarow b{font-weight:600;color:var(--gold);text-align:right}
+.whoinv{display:flex;align-items:center;gap:10px;text-align:left;margin-top:8px}
+.whoinv span{font-size:var(--t-body);color:var(--muted)}
+.whoinv b{color:var(--fg);font-weight:600}
+.socio .foot .note{width:100%}
+.socio .foot .note .i{color:var(--gold)}

@@ -39,6 +39,8 @@ const DISTS=['Miraflores','Barranco','San Isidro','Lince','Magdalena','Jesús Ma
 const NEAR={'Miraflores':['Barranco','San Isidro','Surquillo','Surco'],'Barranco':['Miraflores','Chorrillos','Surco'],'San Isidro':['Miraflores','Lince','Magdalena','Jesús María','Surquillo','San Borja'],'Lince':['San Isidro','Jesús María','Lima Cercado'],'Magdalena':['San Isidro','Jesús María','Pueblo Libre','San Miguel'],'Jesús María':['Lince','Magdalena','Pueblo Libre','Lima Cercado','San Isidro'],'Pueblo Libre':['Magdalena','Jesús María','Lima Cercado','San Miguel'],'Lima Cercado':['Lince','Jesús María','Pueblo Libre','SJL'],'Surquillo':['Miraflores','San Isidro','San Borja','Surco'],'San Borja':['San Isidro','Surquillo','Surco','La Molina'],'Surco':['Miraflores','Barranco','Surquillo','San Borja','La Molina','Chorrillos'],'La Molina':['Surco','San Borja'],'San Miguel':['Magdalena','Pueblo Libre'],'Chorrillos':['Barranco','Surco'],'SJL':['Lima Cercado']};
 const RAD={distrito:['Mi distrito','Solo personas de tu distrito'],vecinos:['Vecinos','Tu distrito y los que lo rodean'],lima:['Todo Lima','Todas las personas de Martini']};
 const MAXV=15, MAXC=30, MINV=2, MAXCALL=600;
+const maxV=key=>key==='inv'&&S.me&&S.me.socio?30:MAXV;
+const PACKS=[[3,7.9,'Pack Brindis','Para empezar la noche'],[11,24.9,'Pack Noche','10 tragos y 1 de regalo'],[29,54.9,'Pack Barra','25 tragos y 4 de regalo']];
 const TXT={
   generic:'Algo se derramó de nuestro lado. Inténtalo de nuevo.',
   offline:'Sin conexión. Tu barra te espera cuando vuelva la señal.',
@@ -446,7 +448,7 @@ record:()=>{const p=S.target;const d=DR[S.pick];const v=S.voice;const has=v&&v.b
   <div class="scroll pad" style="text-align:center">
     <div class="recdrink"><img src="${img(S.pick)}" alt="${d.n}">${tier(d.tier)}</div>
     <h1 class="h2" style="margin-top:28px">Acompaña tu <em>${d.n}</em> con tu voz</h1>
-    <p class="small muted" style="margin:8px auto 0;max-width:30ch">${first(p.name)} lo escuchará antes de ver tu foto. Hasta ${MAXV} segundos.</p>
+    <p class="small muted" style="margin:8px auto 0;max-width:30ch">${first(p.name)} lo escuchará antes de ver tu foto. Hasta ${maxV('inv')} segundos.</p>
     ${!has&&S.tpl!=null?`<div class="script"><span class="eyebrow">Léelo tal cual o a tu manera</span>${esc(TPL(p,d)[S.tpl])}</div>`:''}
     <div style="margin-top:18px">${voiceBlock('inv',v,d.c)}</div>
     ${!v?`<div class="ideas">${['Por qué este trago','Algo de su perfil','Un plan simple'].map((t,i)=>`<button type="button" class="chip ${S.tpl===i?'on':''}" data-a="tpl" data-v="${i}">${t}</button>`).join('')}</div><p class="small dim" style="margin-top:12px">Puedes grabarlo las veces que quieras antes de enviarlo.</p>`:''}
@@ -464,8 +466,8 @@ sent:()=>{const p=S.target;const d=DR[S.sentDrink];return shell('',d.c,`<div cla
 actividad:()=>{const t=S.act;let body='';const goDisc=`<button class="btn btn-primary" data-a="tab" data-v="personas" type="button" style="margin-top:20px">Descubrir personas</button>`;
   if(t==='recibidas'){body=S.recv.length?S.recv.map(r=>{const d=DR[r.drink];const f=S.people[r.from_id]||{};return `<article class="card rcard" data-inv="${r.id}"><img src="${img(r.drink)}" alt="${d.n}"><div style="min-width:0">
       <div class="head">${ice(r.created_at)}<span class="hr">${tier(d.tier)}<button type="button" class="iconbtn sm" data-a="sheet" data-v="safety-inv" data-id="${r.from_id}" aria-label="Más opciones">${I('dots','s')}</button></span></div>
-      <div class="what">Alguien te invitó un <b>${d.n}</b></div>
-      <div class="hint">${f.age?f.age+' años · ':''}${esc(f.district||'')}</div>
+      ${S.me.socio&&(S.photos[r.from_id]||[])[0]?`<button type="button" class="whoinv" data-a="see-inv" data-v="${r.from_id}" aria-label="Ver su foto">${photoAv(S.photos[r.from_id][0],f,40)}<span><b>${first(f.name)}${f.age?', '+f.age:''}</b> te invitó un <b>${d.n}</b></span></button>`:`<div class="what">Alguien te invitó un <b>${d.n}</b></div>`}
+      <div class="hint">${S.me.socio?'':f.age?f.age+' años · ':''}${esc(f.district||'')}</div>
       ${r.drink==='water'?'<div class="hint" style="margin-top:10px">Te dejó un Cool Water: le interesas.</div>':vn(r.voice,r.voice_secs,r.voice_peaks,false,'recibidas')}
     </div>
     <div class="acts"><button class="btn btn-glass btn-sm" style="width:100%" data-a="decline" data-v="${r.id}" type="button">Ahora no</button><button class="btn btn-primary btn-sm" style="width:100%" data-a="accept" data-v="${r.id}" type="button">${I('glass','s')} Brindar</button></div></article>`;}).join('')
@@ -540,6 +542,16 @@ plan:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m)return V.actividad();co
   </div>
   <div class="foot pad"><button class="btn btn-ghost" data-a="row" data-v="sheet:ronda-close" type="button">Cerrar mi ronda</button></div>`);},
 
+socio:()=>{const on=S.me.socio;return `<section class="screen socio" style="--glow:#E6C27A">${topbar('')}
+  <div class="scroll pad">
+    <span class="eyebrow" style="color:var(--gold)">Socio del bar</span>
+    <h1 class="display" style="margin-top:10px">${on?'Tu lugar en <em>la barra</em>':'Ve quién te invita <em>antes de aceptar</em>'}</h1>
+    <div style="margin-top:16px">${[['eye','Ve quién te invitó','Su foto y su nombre, antes de decidir.'],['glass','4 tragos Tier 1 de bienvenida','Llegan a tu barra al activarlo.'],['mic','Brindis de hasta 30 segundos','El doble de tiempo para causar buena impresión.'],['bolt','Aparece primero en Descubrir','Más personas ven tu perfil.']].map(([i,b,t])=>`<div class="benefit">${I(i)}<div><b>${b}</b><span>${t}</span></div></div>`).join('')}</div>
+    ${on?'':`<div class="card betarow" style="margin-top:20px"><span><s>S/ 19.90 al mes</s></span><b>La casa invita en la beta</b></div>`}
+    <div style="height:14px"></div>
+  </div>
+  <div class="foot pad">${on?`<div class="note">${I('star')}<span>Eres Socio del bar. Todo esto ya está activo.</span></div>`:`<button class="btn btn-gold" data-a="socio-go" type="button" ${S.busy?'disabled':''}>${S.busy?'Activando…':'Hacerme Socio'}</button>`}</div></section>`;},
+
 call:()=>{const C=CALL;const m=C&&S.matches.find(x=>x.id===C.match);if(!m)return V.actividad();const p=S.people[C.peer]||{};const d=DR[m.drink];const inc=C.state==='incoming';const live2=C.state==='live';
   return `<section class="screen call pad" style="--glow:${d.c};padding-block:20px 26px">
   <span class="eyebrow" style="color:var(--gold)">Llamada de brindis · solo voz</span>
@@ -553,7 +565,9 @@ call:()=>{const C=CALL;const m=C&&S.matches.find(x=>x.id===C.match);if(!m)return
 bar:()=>{const t=S.barTab;let body='';
   if(t==='carta'){const card=k=>{const d=DR[k];const have=(S.me.inv||{})[k];return `<button type="button" class="dcard" style="--c:${d.c}" data-a="want" data-v="${k}"><div class="im"><img src="${img(k)}" alt="" loading="lazy">${tier(d.tier)}${have>1?`<span class="cnt">x${have}</span>`:''}</div><div class="tx"><b>${d.n}</b><div class="tg">${d.t}</div><div class="pr">${have?'En tu barra':money(PRICE[d.tier])}</div></div></button>`;};
     body=Object.keys(STY).map(sk=>{const sy=STY[sk];const ks=Object.keys(DR).filter(k=>DR[k].s===sk).sort((a,b)=>DR[a].tier-DR[b].tier);return `<div class="sec"><div class="stylehead" style="--c:${sy.c}"><img src="${img(sy.img)}" alt=""><div style="flex:1;min-width:0"><b>${sk}</b><span>${sy.d}</span></div></div><div class="hscroll">${ks.map(card).join('')}</div></div>`;}).join('')
-    +`<div class="card water" style="margin-top:24px"><img src="${img('water')}" alt=""><div style="flex:1"><b class="h3" style="font-size:var(--t-body)">Cool Water</b><div class="small muted">Gratis, uno al día. Dice “me interesas” sin voz.</div></div>${tier(0)}</div>`;}
+    +`<div class="card water" style="margin-top:24px"><img src="${img('water')}" alt=""><div style="flex:1"><b class="h3" style="font-size:var(--t-body)">Cool Water</b><div class="small muted">Gratis, uno al día. Dice “me interesas” sin voz.</div></div>${tier(0)}</div>
+    <div class="sec"><span class="eyebrow">Packs de Tier 1</span><div class="packs">${PACKS.map(([q,pr,n,dd],i)=>`<button type="button" class="card pack ${i===1?'best':''}" data-a="buy-pack" data-v="${q}">${i===1?'<span class="flag">Más elegido</span>':''}<span class="qty">${q}</span><span class="grow"><b>${n}</b><span>${dd}</span></span><span class="pp">${money(pr)}</span></button>`).join('')}</div></div>
+    <button type="button" class="socio-banner" style="margin-top:24px;width:100%;text-align:left" data-a="go" data-v="socio">${I('star')}<span style="flex:1"><b>Socio del bar</b><span>${S.me.socio?'Ya eres Socio. Mira lo que incluye.':'Ve quién te invita antes de aceptar.'}</span></span>${I('chev')}</button>`;}
   else{const avail=Object.entries(S.me.inv||{}).filter(([,n])=>n>0);
     body=`${avail.length?`<div class="grid2" style="margin-top:18px">${avail.map(([k,n])=>{const d=DR[k];return `<div class="dcard" style="--c:${d.c}"><div class="im"><img src="${img(k)}" alt="">${tier(d.tier)}${n>1?`<span class="cnt">x${n}</span>`:''}</div><div class="tx"><b>${d.n}</b><div class="tg">${d.t}</div></div></div>`;}).join('')}</div>`:`<div class="empty" style="padding:28px 10px"><div class="h2">Tu barra descansa</div>Tus tragos en camino vuelven si no los aceptan en 48 horas.</div>`}
     <div class="card water" style="margin-top:16px"><img src="${img('water')}" alt=""><div style="flex:1"><b class="h3" style="font-size:var(--t-body)">Cool Water</b><div class="small muted">${waterOK()?'Disponible hoy':'Vuelve mañana'}</div></div>${tier(0)}</div>
@@ -566,21 +580,21 @@ perfil:()=>{const u=S.me;const s=STY[u.style]||STY.Mystery;const ph=S.myPhoto?.u
     <div class="me-top">
       <button type="button" class="mecard" data-a="edit-foto" aria-label="Cambiar foto">${ph?`<img src="${esc(ph)}" alt="Tu foto">`:''}<span class="chg">${I('camera','s')}</span></button>
       <div class="me-info"><h1 class="display" style="font-size:30px">${esc(u.name)}, ${ageOf(u.birth)}</h1><div class="small muted" style="margin-top:6px">${esc(u.district)} · <button type="button" class="inlink" data-a="edit-style">Estilo ${esc(u.style)}</button></div>
-        <p class="small dim" style="margin-top:10px">Solo la ven quienes brindan contigo</p></div>
+        ${u.socio?`<div class="chips" style="margin-top:10px"><span class="chip static" style="color:var(--gold)">${I('star','s')} Socio del bar</span></div>`:''}<p class="small dim" style="margin-top:10px">Solo la ven quienes brindan contigo</p></div>
     </div>
     <button type="button" class="card mebio" data-a="sheet" data-v="bio">${u.bio?`“${esc(u.bio)}”`:'<span class="muted">Escribe tu frase</span>'}${I('edit','s')}</button>
     <div class="sec"><span class="eyebrow">Tu brindis de presentación</span><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${u.intro_voice?vn(u.intro_voice,u.intro_secs,u.intro_peaks,true,'perfil'):''}<button class="chip" type="button" data-a="edit-intro">${u.intro_voice?'Grabar otro':'Grabar mi brindis'}</button></div></div>
     ${S.matches.length||S.nrecv?`<div class="sec stats"><div class="card stat"><b>${S.nrecv}</b><span>Tragos recibidos</span></div><div class="card stat"><b>${S.matches.length}</b><span>Brindis</span></div><div class="card stat"><b>${u.cheers||0}</b><span>Te aceptaron</span></div></div>`:''}
     ${S.matches.length?`<div class="sec"><span class="eyebrow">Tu colección</span><div class="coll">${[...new Set(S.matches.map(m=>m.drink))].slice(0,8).map(k=>`<img src="${img(k)}" alt="${DR[k].n}">`).join('')}</div></div>`:''}
     <div class="sec card list">
-      ${[['bell','Avisos','sheet:notifs'],['shield','Términos y privacidad','sheet:terms'],['out','Cerrar sesión','logout'],['x','Eliminar mi cuenta','sheet:delete']].filter(Boolean).map(([ic,l,a])=>`<button type="button" class="row" data-a="row" data-v="${a}">${I(ic)}<span class="grow"><b style="font-weight:500">${l}</b></span><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg></button>`).join('')}
+      ${[['star','Socio del bar','go:socio'],['bell','Avisos','sheet:notifs'],['shield','Términos y privacidad','sheet:terms'],['out','Cerrar sesión','logout'],['x','Eliminar mi cuenta','sheet:delete']].filter(Boolean).map(([ic,l,a])=>`<button type="button" class="row" data-a="row" data-v="${a}">${I(ic)}<span class="grow"><b style="font-weight:500">${l}</b></span><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg></button>`).join('')}
     </div>
     <p class="small dim" style="text-align:center;margin-top:18px">Martini beta · Lima</p>
     <div style="height:20px"></div>
   </div>${tabsbar('perfil')}`);}
 };
 
-function voiceBlock(key,v,c){const max=key==='chat'?MAXC:MAXV;
+function voiceBlock(key,v,c){const max=key==='chat'?MAXC:maxV(key);
   if(v&&v.on)return `${liveBars(c)}<div class="num muted rect" id="rect" style="margin-top:6px">0:00 / 0:${max}</div>
     <button class="recbtn on" data-a="rec" data-v="${key}" type="button" aria-label="Detener"><span class="sq"></span></button><div class="small dim" style="margin-top:10px">Toca para detener</div>`;
   if(v&&(v.blob||v.path))return `<div class="recdone">${vn(v.url||v.path,v.secs,v.peaks,true,'preview')}<button class="chip" type="button" data-a="rec-again" data-v="${key}">Grabar otra vez</button></div>`;
@@ -604,7 +618,10 @@ const SHEETS={
     <div class="stack">${['Me incomoda','Perfil falso','Pide o ofrece dinero','Otro'].map(r=>`<button type="button" class="btn btn-glass" data-a="report-go" data-v="${r}">${r}</button>`).join('')}</div><div class="foot" style="padding-inline:0">${cancel()}</div>`),
   chatmenu:()=>{const m=S.matches.find(x=>x.id===S.chat);const p=S.people[peerOf(m)]||{};return sheet('Opciones',`<div class="foot" style="padding-inline:0"><button class="btn btn-glass" data-a="bye" type="button">Terminar el brindis</button><button class="btn btn-glass" data-a="block" data-v="${p.id}" type="button">${I('lock','s')} Bloquear a ${first(p.name)}</button><button class="btn btn-glass" data-a="report" data-v="${p.id}" type="button">${I('flag','s')} Reportar</button>${cancel()}</div>`);},
   bye:()=>sheet('Despedida',`<div class="h2" style="font-size:var(--t-head-l)">Despedirte con elegancia</div><p class="small muted" style="margin:8px 0 14px">No pasa nada si no sentiste química. Le llegará este mensaje y el brindis se cierra. Sin penalidad para nadie.</p><div class="card" style="padding:14px 16px">“Gracias por el brindis, me alegró conocerte. Esta vez prefiero no seguir. ¡Salud!”</div><div class="foot" style="padding-inline:0"><button class="btn btn-primary" data-a="bye-go" type="button">Enviar y despedirme</button>${cancel('Mejor sigo la conversación')}</div>`),
-  photo:()=>{const m=S.matches.find(x=>x.id===S.chat);const pid=peerOf(m);const ph=(S.photos[pid]||[])[0];return `<div class="scrim dark" data-a="close-sheet"></div><button type="button" class="bigphoto" data-a="close-sheet" aria-label="Cerrar">${ph?`<img src="${esc(ph)}" alt="">`:''}</button>`;},
+  photo:()=>{const m=S.matches.find(x=>x.id===S.chat);const ph=S.sheet.url||(m?(S.photos[peerOf(m)]||[])[0]:null);return `<div class="scrim dark" data-a="close-sheet"></div><button type="button" class="bigphoto" data-a="close-sheet" aria-label="Cerrar">${ph?`<img src="${esc(ph)}" alt="">`:''}</button>`;},
+  buy:()=>{const sh=S.sheet;const pk=sh.pack&&PACKS.find(p=>p[0]===sh.pack);const d=pk?null:DR[sh.v];const pr=pk?pk[1]:PRICE[d.tier];return sheet('Llevar a mi barra',`<div style="display:flex;gap:14px;align-items:center">${pk?`<span class="num" style="font-family:var(--display);font-weight:200;font-size:44px;width:64px;text-align:center">${pk[0]}</span>`:`<img src="${img(sh.v)}" alt="" style="width:64px;height:80px;object-fit:cover;border-radius:var(--r-md)">`}<div style="flex:1;min-width:0"><div class="h2" style="font-size:var(--t-head-l)">${pk?pk[2]:d.n}</div><div class="small muted">${pk?pk[0]+' tragos Tier 1 para tu barra':d.t}</div></div>${tier(pk?1:d.tier)}</div>
+    <div class="card betarow"><span><s>${money(pr)}</s></span><b>La casa invita en la beta</b></div>
+    <div class="foot" style="padding-inline:0"><button class="btn btn-primary" data-a="buy-go" type="button" ${S.busy?'disabled':''}>${S.busy?'Sirviendo…':'Llevar a mi barra'}</button>${cancel()}</div>`);},
   want:()=>{const k=S.sheet.v,d=DR[k];return sheet('Llega pronto',`<div style="display:flex;gap:14px;align-items:center"><img src="${img(k)}" alt="" style="width:64px;height:80px;object-fit:cover;border-radius:var(--r-md)"><div><div class="h2" style="font-size:var(--t-head-l)">${d.n}</div><div class="small muted">${money(PRICE[d.tier])}</div></div></div>
     <p class="small muted" style="margin:16px 0 0">Llega pronto a la barra. Estamos afinando la carta.</p><div class="foot" style="padding-inline:0">${cancel('Entendido')}</div>`);},
   terms:()=>sheet('Términos y privacidad',`<div class="h2" style="font-size:var(--t-head-l)">Términos y privacidad</div><p class="small muted" style="margin:10px 0 0;line-height:1.6">${esc(TXT.terms)}</p><div class="foot" style="padding-inline:0">${cancel('Entendido')}</div>`),
@@ -635,7 +652,7 @@ async function loadInvites(){const [r,s]=await Promise.all([
   sb.from('invites').select('*').eq('to_id',uid()).eq('status','pending').order('created_at',{ascending:false}),
   sb.from('invites').select('*').eq('from_id',uid()).order('created_at',{ascending:false}).limit(60)]);
   S.recv=(r.data||[]).filter(x=>hoursLeft(x.created_at)>0);S.sent=s.data||[];
-  await loadPeople([...S.recv.map(x=>x.from_id),...S.sent.map(x=>x.to_id)]);signed('voice',S.recv.map(x=>x.voice));
+  await loadPeople([...S.recv.map(x=>x.from_id),...S.sent.map(x=>x.to_id)]);signed('voice',S.recv.map(x=>x.voice));if(S.me&&S.me.socio&&S.recv.length)loadPhotosOf(S.recv.map(x=>x.from_id)).then(()=>{if(S.screen==='actividad')rerender();}).catch(()=>{});
   const back=LS.get('back',[]);const ret=S.sent.filter(x=>x.status==='expired'&&x.drink!=='water'&&!back.includes(x.id));
   if(ret.length){LS.set('back',[...back,...ret.map(x=>x.id)].slice(-200));if(back.length||LS.get('backInit',false))setTimeout(()=>toast(`Tu ${DR[ret[0].drink].n} volvió a tu barra.`,'return'),900);}LS.set('backInit',true);}
 async function loadMatches(){const {data}=await sb.from('matches').select('*').or(`a.eq.${uid()},b.eq.${uid()}`).order('created_at',{ascending:false});S.matches=data||[];
@@ -690,7 +707,7 @@ function appendMsgs(){const box=document.getElementById('msgs');if(!box){rerende
 const draft=()=>({name:'',birth:'',district:'',gender:'',interest:'',style:'Mystery',bio:'',photo:null,intro:null});
 async function startRec(key){
   const set=v=>{if(key==='inv')S.voice=v;else if(key==='ronda')S.R.voice=v;else S.D.intro=v;};set({on:true});rerender();
-  const ok=await recStart(MAXV,(t,s)=>paintLive(t,s,MAXV),()=>A.rec(key));
+  const mx=maxV(key);const ok=await recStart(mx,(t,s)=>paintLive(t,s,mx),()=>A.rec(key));
   if(!ok){set(null);rerender();}}
 async function finishRec(key){const r=await recStop();if(key==='inv')S.voice=r;else if(key==='ronda'){if(S.R)S.R.voice=r;}else S.D.intro=r;rerender();}
 const removeFromDeck=id=>{S.all=S.all.filter(x=>x.id!==id);const i=S.deck.findIndex(x=>x.id===id);if(i<0)return;S.deck.splice(i,1);if(S.di>i)S.di--;if(S.deck.length)S.di=S.di%S.deck.length;else S.di=0;};
@@ -809,7 +826,15 @@ const A={
   'cmic-x':()=>{recCancel();S.cmic=null;rerender();},
   retry:v=>{const l=S.msgs[S.chat]||[];const m=l.find(x=>x.id===v);if(!m)return;S.msgs[S.chat]=l.filter(x=>x!==m);sendMsg(m.raw);},
   bartab:v=>{if(S.barTab===v)return;S.barTab=v;rerender();swapIn();},
-  want:v=>{if((S.me.inv||{})[v])return toast('Ya está en tu barra, lista para invitar','glass');S.sheet={k:'want',v};rerender();},
+  want:v=>{S.sheet={k:'buy',v};rerender();},
+  'buy-pack':v=>{S.sheet={k:'buy',pack:+v};rerender();},
+  'buy-go':async()=>{const sh=S.sheet;if(!sh||S.busy)return;S.busy=true;rerender();
+    try{const {error}=sh.pack?await sb.rpc('beta_pack',{p_qty:sh.pack}):await sb.rpc('beta_buy',{p_drink:sh.v});if(error)throw error;await loadMe();S.busy=false;S.sheet=null;rerender();hap([10,30,10]);toast(sh.pack?`${sh.pack} tragos llegaron a tu barra`:`Tu ${DR[sh.v].n} ya está en tu barra`,'glass');}
+    catch(e){S.busy=false;rerender();err(e);}},
+  'socio-go':async()=>{if(S.busy||S.me.socio)return;S.busy=true;rerender();
+    try{const {error}=await sb.rpc('beta_socio');if(error)throw error;await loadMe();S.busy=false;rerender();hap([10,30,10]);toast('Ya eres Socio del bar. Cuatro tragos llegaron a tu barra.','star');loadInvites();}
+    catch(e){S.busy=false;rerender();err(e);}},
+  'see-inv':v=>{const ph=(S.photos[v]||[])[0];if(!ph)return;S.sheet={k:'photo',url:ph};rerender();},
   'want-go':()=>{const k=S.sheet.v;track('drink_wanted',{drink:k,tier:DR[k].tier});S.sheet=null;rerender();toast('Anotado. Te avisamos.','bell');},
   sheet:(v,el)=>{let p=S.target;if(S.screen==='chat'){const m=S.matches.find(x=>x.id===S.chat);p={id:peerOf(m),...S.people[peerOf(m)]};}if(v==='safety-inv'){p={id:el.dataset.id,...S.people[el.dataset.id],name:'esta persona'};v='safety';}S.sheet={k:v,p};rerender();},
   'close-sheet':()=>{const els=$app.querySelectorAll('.sheet,.scrim,.bigphoto');if(!els.length||calm()){S.sheet=null;rerender();return;}els.forEach(e=>e.classList.add('closing'));setTimeout(()=>{S.sheet=null;rerender();},200);},
@@ -820,7 +845,7 @@ const A={
     try{const {error}=await sb.from('reports').insert({reporter:uid(),reported:v,reason,context:ctx});if(error)throw error;track('report',{reason});await A.block(v);toast('Gracias. Lo revisamos hoy.','shield');}catch(e){err(e);}},
   bye:()=>{S.sheet={k:'bye'};rerender();},
   'bye-go':async()=>{try{await sb.from('messages').insert({match_id:S.chat,sender:uid(),body:'Gracias por el brindis, me alegró conocerte. Esta vez prefiero no seguir. ¡Salud!'});const {error}=await sb.rpc('close_match',{p_id:S.chat});if(error)throw error;S.sheet=null;await loadMatches();toast('Te despediste con elegancia');S.act='chats';tab('actividad');}catch(e){err(e);}},
-  row:v=>{const [a,b]=v.split(':');if(a==='sheet'){S.sheet={k:b};rerender();}else A[a]&&A[a]();},
+  row:v=>{const [a,b]=v.split(':');if(a==='sheet'){S.sheet={k:b};rerender();}else A[a]&&A[a](b);},
   share:async()=>{const code=S.me?.code_used||S.code||'';const url=location.origin+'/?c='+encodeURIComponent(code);const text=`Te guardé un sitio en Martini, el bar donde no das like: invitas un trago con tu voz. Entra con mi código ${code}:`;track('share_tap');
     try{if(navigator.share){await navigator.share({title:'Martini',text,url});return;}}catch(e){return;}
     window.open('https://wa.me/?text='+encodeURIComponent(text+' '+url),'_blank');},

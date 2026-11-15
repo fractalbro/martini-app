@@ -36,6 +36,7 @@ const rpcs={check_code:a=>a.p_code==='BARRA-01',expire_invites:()=>null,discover
  choose_ronda:a=>{const r=db.rondas.find(x=>x.id===a.p_id);r.status='chosen';const now=Date.now(),iso=t=>new Date(t).toISOString();db.matches.push({id:'m2',a:ME,b:a.p_user,drink:r.drink,invite_id:null,ronda_id:r.id,closed:false,crossed:false,gift:null,created_at:iso(now)});db.photos.push({owner:a.p_user,path:a.p_user+'/p.jpg',pos:0});
    db.messages.push({id:'y1',match_id:'m2',sender:ME,body:r.plan,voice:null,created_at:iso(now-9e5)},{id:'y2',match_id:'m2',sender:a.p_user,body:'#plan|Café|Un café en Barranco|'+iso(now-3*36e5),voice:null,created_at:iso(now-8e5)},{id:'y3',match_id:'m2',sender:ME,body:'#plan-ok|y2',voice:null,created_at:iso(now-7e5)},{id:'y4',match_id:'m2',sender:a.p_user,body:'#plan|Tragos|Un bar en Miraflores|'+iso(now+50*36e5),voice:null,created_at:iso(now-6e5)});return 'm2';},
  close_ronda:()=>{db.rondas.forEach(r=>r.status='closed');return null;},
+ beta_buy:a=>{const me=db.profiles[0];me.inv[a.p_drink]=(me.inv[a.p_drink]||0)+1;return null;},beta_pack:a=>{const me=db.profiles[0];['heaven','minimal','citrus'].forEach(k=>me.inv[k]=(me.inv[k]||0)+1);return null;},beta_socio:()=>{db.profiles[0].socio=true;return null;},
  block_user:()=>null,close_match:a=>{db.matches.forEach(m=>m.closed=true);return null;},delete_me:()=>null};
 window.supabase={createClient:()=>({
  auth:{getSession:()=>ok({session:db.session}),onAuthStateChange(){},signOut:()=>ok(null),
