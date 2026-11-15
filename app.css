@@ -183,3 +183,13 @@ input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit;col
 .plan .pacts .btn{width:100%;padding-inline:8px}
 .m .plan{max-width:100%}
 .ta::placeholder{color:var(--dim)}
+
+/* ============ Radio, avisos y llamada ============ */
+.deck.tall.seg1{height:min(540px,calc(100dvh - 330px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)));min-height:300px}
+.deck.tall.seg2{height:min(540px,calc(100dvh - 386px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)));min-height:280px}
+.quiet{margin-top:12px;min-height:28px}
+.call{display:flex;flex-direction:column}
+.callav .av{width:150px!important;height:150px!important}
+.callav.quiet2::before,.callav.quiet2::after{animation:none;opacity:.35}
+.calltime.wait{font-size:var(--t-lead);font-weight:400;color:var(--muted);letter-spacing:0;margin-top:10px}
+.sys .i{width:13px;height:13px;vertical-align:-2px;margin-right:4px;color:var(--gold)}

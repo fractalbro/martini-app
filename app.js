@@ -36,7 +36,9 @@ const STY={
   Night:{d:'Nocturno y de carácter fuerte',img:'eclipse',c:'#FF8A3D'}
 };
 const DISTS=['Miraflores','Barranco','San Isidro','Lince','Magdalena','Jesús María','Pueblo Libre','Lima Cercado','Surquillo','San Borja','Surco','La Molina','San Miguel','Chorrillos','Los Olivos','SJL','Otro distrito de Lima'];
-const MAXV=15, MAXC=30, MINV=2;
+const NEAR={'Miraflores':['Barranco','San Isidro','Surquillo','Surco'],'Barranco':['Miraflores','Chorrillos','Surco'],'San Isidro':['Miraflores','Lince','Magdalena','Jesús María','Surquillo','San Borja'],'Lince':['San Isidro','Jesús María','Lima Cercado'],'Magdalena':['San Isidro','Jesús María','Pueblo Libre','San Miguel'],'Jesús María':['Lince','Magdalena','Pueblo Libre','Lima Cercado','San Isidro'],'Pueblo Libre':['Magdalena','Jesús María','Lima Cercado','San Miguel'],'Lima Cercado':['Lince','Jesús María','Pueblo Libre','SJL'],'Surquillo':['Miraflores','San Isidro','San Borja','Surco'],'San Borja':['San Isidro','Surquillo','Surco','La Molina'],'Surco':['Miraflores','Barranco','Surquillo','San Borja','La Molina','Chorrillos'],'La Molina':['Surco','San Borja'],'San Miguel':['Magdalena','Pueblo Libre'],'Chorrillos':['Barranco','Surco'],'SJL':['Lima Cercado']};
+const RAD={distrito:['Mi distrito','Solo personas de tu distrito'],vecinos:['Vecinos','Tu distrito y los que lo rodean'],lima:['Todo Lima','Todas las personas de Martini']};
+const MAXV=15, MAXC=30, MINV=2, MAXCALL=600;
 const TXT={
   generic:'Algo se derramó de nuestro lado. Inténtalo de nuevo.',
   offline:'Sin conexión. Tu barra te espera cuando vuelva la señal.',
@@ -80,7 +82,8 @@ function vn(path,secs,peaks,mine=false,where=''){if(!path)return '';secs=Math.ma
 function veilAv(p,size=48){const c=(STY[p?.style]||STY.Mystery).c;return p?.veil?`<span class="av veil" style="--c:${c};width:${size}px;height:${size}px"><img src="${esc(p.veil)}" alt=""></span>`:`<span class="av hide" style="--c:${c};width:${size}px;height:${size}px">${I('lock','s')}</span>`;}
 function photoAv(url,p,size=44){const c=(STY[p?.style]||STY.Mystery).c;return url?`<span class="av ph" style="--c:${c};width:${size}px;height:${size}px"><img src="${esc(url)}" alt=""></span>`:veilAv(p,size);}
 function toast(msg,icon='check'){document.querySelectorAll('.toast').forEach(t=>t.remove());const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.innerHTML=I(icon)+`<span>${esc(msg)}</span>`;$ph.appendChild(t);setTimeout(()=>t.remove(),3400);}
-function banner(title,sub,action,v){const b=document.createElement('button');b.type='button';b.className='banner';b.dataset.a=action;if(v)b.dataset.v=v;b.innerHTML=`<span class="appi"><img src="img/lips.png" alt=""></span><span class="grow"><b>${esc(title)}</b><span>${esc(sub)}</span></span><span class="small dim">ahora</span>`;$ph.appendChild(b);hap([10,40,10]);setTimeout(()=>b.remove(),6000);}
+function notify(body){try{if(!document.hidden||!window.Notification||Notification.permission!=='granted'||!LS.get('notif',true))return;navigator.serviceWorker.ready.then(r=>r.showNotification('Martini',{body,icon:'/icons/icon-192.png',badge:'/icons/icon-192.png',tag:'martini'})).catch(()=>{});}catch(e){}}
+function banner(title,sub,action,v){notify(title==='Martini'||title==='¡Salud!'?sub:'Tienes un mensaje nuevo');const b=document.createElement('button');b.type='button';b.className='banner';b.dataset.a=action;if(v)b.dataset.v=v;b.innerHTML=`<span class="appi"><img src="img/lips.png" alt=""></span><span class="grow"><b>${esc(title)}</b><span>${esc(sub)}</span></span><span class="small dim">ahora</span>`;$ph.appendChild(b);hap([10,40,10]);setTimeout(()=>b.remove(),6000);}
 function err(e,fallback){console.error(e);if(!navigator.onLine)return toast(TXT.offline,'x');const m=e&&e.message||'';
   const mine=/[áéíóú¿¡]|Ese |Ya |Esta |Martini|trago|Correo|contraseña/.test(m)&&!/row-level|violates|JWT|fetch/i.test(m);toast(mine?m:(fallback||TXT.generic),'x');}
 function track(){} /* medición: fuera de esta versión */
@@ -139,7 +142,7 @@ async function play(btn){const path=btn.dataset.v,dur=+btn.dataset.d;
 /* ================= ESTADO ================= */
 let S={screen:'boot',stack:[],sheet:null,session:null,me:null,myPhoto:null,
   deck:[],di:0,looped:false,recv:[],sent:[],matches:[],people:{},photos:{},msgs:{},chat:null,
-  act:'recibidas',ob:0,auth:'login',authStep:'code',code:null,D:null,editing:null,target:null,pick:null,voice:null,salud:null,saludQ:[],cmic:null,barTab:'carta',busy:false,dview:'personas',rondas:[],hands:3,myRonda:null,R:null,P:null,nrecv:0};
+  act:'recibidas',ob:0,auth:'login',authStep:'code',code:null,D:null,editing:null,target:null,pick:null,voice:null,salud:null,saludQ:[],cmic:null,barTab:'carta',busy:false,dview:'personas',all:[],radius:'lima',fstyle:'',rondas:[],hands:3,myRonda:null,R:null,P:null,nrecv:0};
 const lastRead=LS.get('read',{});
 const markRead=id=>{lastRead[id]=new Date().toISOString();LS.set('read',lastRead);};
 const lastOf=m=>(S.msgs[m.id]||[]).slice(-1)[0]||m.last;
@@ -147,6 +150,8 @@ const unread=m=>{const l=lastOf(m);return !m.closed&&l&&l.sender!==uid()&&(!last
 const peerOf=m=>m.a===uid()?m.b:m.a;
 const invCount=()=>Object.values(S.me?.inv||{}).reduce((a,b)=>a+b,0);
 const waterOK=()=>S.me&&S.me.water_day!==limaDay();
+const zoneOK=(z,r=S.radius)=>r==='lima'||z===S.me.district||(r==='vecinos'&&(NEAR[S.me.district]||[]).includes(z));
+const applyFilter=()=>{const cur=curPerson();S.deck=S.all.filter(p=>zoneOK(p.district)&&(!S.fstyle||p.style===S.fstyle));const i=cur?S.deck.findIndex(p=>p.id===cur.id):-1;S.di=i<0?0:i;S.looped=false;};
 const curPerson=()=>S.deck.length?S.deck[S.di%S.deck.length]:null;
 
 /* ================= NAVEGACIÓN Y RENDER ================= */
@@ -154,7 +159,7 @@ const POUR=new Set(['sent','gift']);const RISE=new Set(['person']);
 let lastScreen=null;
 function go(screen,push=true){stopRec();if(push&&S.screen!==screen&&S.screen!=='boot')S.stack.push(S.screen);S.screen=screen;S.sheet=null;render(push?(RISE.has(screen)?'modal':'push'):'fade');}
 function tab(t){stopRec();S.stack=[];S.sheet=null;S.screen=t;render('tab');}
-function back(){stopRec();S.sheet=null;const from=S.screen;S.screen=S.stack.pop()||'personas';render(RISE.has(from)?'drop':'pop');}
+function back(){if(S.screen==='call'&&CALL){callEnd();return;}stopRec();S.sheet=null;const from=S.screen;S.screen=S.stack.pop()||'personas';render(RISE.has(from)?'drop':'pop');}
 function stopRec(){if(REC.mr)recCancel();S.cmic=null;if(S.voice&&S.voice.on)S.voice=null;if(S.D&&S.D.intro&&S.D.intro.on)S.D.intro=null;if(S.R&&S.R.voice&&S.R.voice.on)S.R.voice=null;if(player)player.pause();}
 
 function render(anim){
@@ -219,10 +224,10 @@ function rondasBody(){const mine=S.myRonda;const n=mine?mine.ap.length:0;
   ${S.rondas.length?`<p class="small dim" style="margin-top:14px">Te ${S.hands===1?'queda 1':'quedan '+S.hands} “Me apunto” hoy.</p>${S.rondas.map(rondaCard).join('')}`:`<div class="empty"><div class="h2">Aún no hay rondas abiertas</div>La primera de la noche suele llenarse rápido.</div>`}`;}
 const dseg=()=>S.rondasOff?'':`<div class="seg" style="margin-top:14px" role="tablist">${[['personas','Personas'],['rondas','Rondas abiertas']].map(([k,l])=>`<button type="button" role="tab" aria-selected="${S.dview===k}" class="${S.dview===k?'on':''}" data-a="dview" data-v="${k}">${l}</button>`).join('')}</div>`;
 /* Salidas: viajan como mensajes con formato, sin tablas nuevas. */
-const PL=b=>{if(!b||b[0]!=='#')return null;const a=b.split('|');return a[0]==='#plan'&&a.length>=4?{k:'plan',type:a[1],place:a[2],when:a[3]}:a[0]==='#plan-ok'?{k:'ok',ref:a[1]}:a[0]==='#plan-no'?{k:'no',ref:a[1]}:null;};
+const PL=b=>{if(!b||b[0]!=='#')return null;const a=b.split('|');return a[0]==='#call'?{k:'call'}:a[0]==='#plan'&&a.length>=4?{k:'plan',type:a[1],place:a[2],when:a[3]}:a[0]==='#plan-ok'?{k:'ok',ref:a[1]}:a[0]==='#plan-no'?{k:'no',ref:a[1]}:null;};
 const planState=(list,id)=>{for(const x of list){const p=PL(x.body);if(p&&p.ref===id)return p.k;}return null;};
 const whenTxt=iso=>{const d=new Date(iso);if(isNaN(d))return esc(iso);const o={timeZone:'America/Lima'};const a=d.toLocaleDateString('es-PE',{...o,weekday:'short',day:'numeric',month:'short'}).replace(/\./g,'');return a.charAt(0).toUpperCase()+a.slice(1)+' · '+d.toLocaleTimeString('en-US',{...o,hour:'numeric',minute:'2-digit'}).toLowerCase();};
-const preview=l=>{const p=PL(l.body);return p?(p.k==='plan'?'Propuesta de salida':p.k==='ok'?'Salida confirmada':'La salida quedó para otro día'):l.body;};
+const preview=l=>{const p=PL(l.body);return p?(p.k==='call'?'Llamada de brindis':p.k==='plan'?'Propuesta de salida':p.k==='ok'?'Salida confirmada':'La salida quedó para otro día'):l.body;};
 function planWhens(){const now=Date.now();const L=new Date(now-5*36e5);const out=[];
   for(const [dow,h,m] of [[4,19,30],[5,20,0],[6,18,0]]){let add=(dow-L.getUTCDay()+7)%7;let t=Date.UTC(L.getUTCFullYear(),L.getUTCMonth(),L.getUTCDate()+add,h+5,m);if(t<now+2*36e5)t+=7*864e5;
     const x=new Date(t-5*36e5);out.push([t,`${x.getUTCFullYear()}-${String(x.getUTCMonth()+1).padStart(2,'0')}-${String(x.getUTCDate()).padStart(2,'0')}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00-05:00`]);}
@@ -236,6 +241,41 @@ function checkin(m){const l=S.msgs[m.id]||[];const done=LS.get('checkin',{});con
     return `<div class="card checkin"><span class="eyebrow" style="color:var(--gold)">Solo tú lo ves</span><b style="font-size:var(--t-lead)">¿Cómo te fue con ${first((S.people[pid]||{}).name)}?</b><div class="opts">${[['great','Muy bien'],['ok','Bien'],['nochem','No hubo química'],['bad','Algo no estuvo bien']].map(([k,t2])=>`<button type="button" data-a="checkin" data-v="${k}" data-id="${x.id}">${t2}</button>`).join('')}</div><span class="small dim">Nunca mostramos calificaciones públicas.</span></div>`;}
   return '';}
 const chatBody=m=>`<div class="sys">Brindaron con ${DR[m.drink].n}</div>${(S.msgs[m.id]||[]).map(msg).join('')}${m.closed?'<div class="sys">Este brindis terminó</div>':checkin(m)}`;
+
+/* ================= LLAMADA DE BRINDIS ================= */
+/* Solo voz, de teléfono a teléfono. El timbre viaja como mensaje del chat; la conexión se negocia por un canal del brindis. */
+const RTC={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun.cloudflare.com:3478']}]};
+let CALL=null;
+const callOK=m=>{const l=S.msgs[m.id]||[];return l.some(x=>x.voice&&x.sender===uid())&&l.some(x=>x.voice&&x.sender!==uid());};
+const callClock=()=>{const C=CALL;const t=C&&C.t0?Math.max(0,MAXCALL-Math.floor((Date.now()-C.t0)/1000)):MAXCALL;return Math.floor(t/60)+':'+String(t%60).padStart(2,'0');};
+const callSig=p=>{try{CALL&&CALL.ch&&CALL.ch.send({type:'broadcast',event:'sig',payload:p});}catch(e){}};
+function callJoin(C){return new Promise(res=>{C.ch=sb.channel('call-'+C.match,{config:{broadcast:{self:false}}});C.ch.on('broadcast',{event:'sig'},({payload})=>onSig(C,payload)).subscribe(st=>{if(st==='SUBSCRIBED')res(true);else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT')res(false);});setTimeout(()=>res(false),8000);});}
+function callPC(C){const pc=C.pc=new RTCPeerConnection(RTC);C.stream.getTracks().forEach(t=>pc.addTrack(t,C.stream));
+  pc.onicecandidate=e=>{if(e.candidate)callSig({k:'ice',c:e.candidate});};
+  pc.ontrack=e=>{const a=C.audio=C.audio||new Audio();a.autoplay=true;a.setAttribute('playsinline','');a.srcObject=e.streams[0];a.play().catch(()=>{});};
+  pc.onconnectionstatechange=()=>{if(CALL!==C)return;const st=pc.connectionState;
+    if(st==='connected'&&C.state!=='live'){C.state='live';C.t0=Date.now();clearTimeout(C.to);hap([10,40,10]);C.iv=setInterval(()=>{const el=document.getElementById('calltime');if(el)el.textContent=callClock();if(Date.now()-C.t0>=MAXCALL*1000)callEnd('Se acabaron los 10 minutos. Si conectaron, propongan una salida.');},1000);if(S.screen==='call')rerender();}
+    else if(st==='failed')callEnd('No se pudo conectar la llamada. Prueben con otra red.');};
+  return pc;}
+async function onSig(C,p){if(CALL!==C||!p)return;try{
+  if(p.k==='ready'&&C.role==='out'&&!C.pc){C.state='connecting';if(S.screen==='call')rerender();const pc=callPC(C);const o=await pc.createOffer();await pc.setLocalDescription(o);callSig({k:'offer',sdp:pc.localDescription});}
+  else if(p.k==='offer'&&C.role==='in'&&C.stream&&!C.pc){const pc=callPC(C);await pc.setRemoteDescription(p.sdp);for(const c of C.q)await pc.addIceCandidate(c).catch(()=>{});C.q=[];const a=await pc.createAnswer();await pc.setLocalDescription(a);callSig({k:'answer',sdp:pc.localDescription});}
+  else if(p.k==='answer'&&C.pc&&!C.pc.currentRemoteDescription){await C.pc.setRemoteDescription(p.sdp);for(const c of C.q)await C.pc.addIceCandidate(c).catch(()=>{});C.q=[];}
+  else if(p.k==='ice'){if(C.pc&&C.pc.remoteDescription)await C.pc.addIceCandidate(p.c).catch(()=>{});else C.q.push(p.c);}
+  else if(p.k==='bye')callEnd(C.state==='live'?'La llamada terminó':C.role==='out'?'Ahora no puede contestar':'Llamada perdida',true);
+  }catch(e){console.error(e);callEnd('No se pudo conectar la llamada.');}}
+function callEnd(msg,remote){const C=CALL;if(!C)return;if(!remote)callSig({k:'bye'});CALL=null;clearInterval(C.iv);clearTimeout(C.to);
+  try{C.stream&&C.stream.getTracks().forEach(t=>t.stop());}catch(e){}try{C.pc&&C.pc.close();}catch(e){}try{if(C.audio){C.audio.pause();C.audio.srcObject=null;}}catch(e){}
+  const ch=C.ch;if(ch)setTimeout(()=>sb.removeChannel(ch),remote?0:400);
+  if(S.screen==='call')back();if(msg)toast(msg,'phone');}
+async function callMic(){try{return await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}catch(e){toast('Martini necesita tu micrófono para la llamada. Actívalo en los ajustes del navegador.','mic');return null;}}
+async function callStart(m){if(CALL)return;if(!window.RTCPeerConnection)return toast('Este navegador no permite llamadas','x');const stream=await callMic();if(!stream)return;
+  const C=CALL={match:m.id,peer:peerOf(m),role:'out',state:'ringing',stream,q:[],mute:false};go('call');
+  if(!(await callJoin(C))){if(CALL===C)callEnd('No se pudo iniciar la llamada. Revisa tu conexión.');return;}if(CALL!==C)return;
+  const {error}=await sb.from('messages').insert({match_id:m.id,sender:uid(),body:'#call|'+Date.now()});if(error){callEnd('No se pudo iniciar la llamada.');return;}
+  C.to=setTimeout(()=>{if(CALL===C&&C.state!=='live')callEnd('No contestó. Déjale una nota de voz.');},40000);}
+async function callIncoming(m){if(CALL||S.cmic||REC.mr)return;const C=CALL={match:m.id,peer:peerOf(m),role:'in',state:'incoming',stream:null,q:[],mute:false};
+  hap([200,100,200,100,200]);notify('Te están llamando para brindar');go('call');callJoin(C);C.to=setTimeout(()=>{if(CALL===C&&C.state==='incoming')callEnd('Llamada perdida',true);},40000);}
 
 /* ================= VISTAS ================= */
 const OB=[
@@ -339,16 +379,16 @@ gift:()=>shell('','#E6C27A',`<div class="scroll pad" style="text-align:center;pa
   </div>
   <div class="foot pad"><button class="btn btn-primary" data-a="tab" data-v="personas" type="button">Descubrir personas</button></div>`),
 
-personas:()=>{const p=curPerson();const seg=dseg();const head=`<div class="pad brandbar"><span class="brand"><img src="img/lips.png" alt=""><span class="wordmark">Martini</span></span><button class="barchip" data-a="tab" data-v="bar" type="button" aria-label="${barAria()}">${cring()}<span class="bn">${invCount()}</span></button></div>`;
+personas:()=>{const p=curPerson();const filtered=S.radius!=='lima'||S.fstyle;const seg=dseg()+(S.dview==='rondas'||(!S.all.length&&!filtered)?'':`<button type="button" class="quiet" data-a="row" data-v="sheet:radio" aria-label="Cambiar a quiénes ves">${I('pin','s')}<span>${RAD[S.radius][0]}${S.fstyle?' · '+S.fstyle:''}</span>${I('chev','s')}</button>`);const head=`<div class="pad brandbar"><span class="brand"><img src="img/lips.png" alt=""><span class="wordmark">Martini</span></span><button class="barchip" data-a="tab" data-v="bar" type="button" aria-label="${barAria()}">${cring()}<span class="bn">${invCount()}</span></button></div>`;
   if(S.dview==='rondas'&&seg)return shell('','#E6C27A',`${head}<div class="scroll pad"><h1 class="h2">${greet()}</h1>${seg}${rondasBody()}<div style="height:18px"></div></div>${tabsbar('personas')}`);
   if(!p)return shell('','#86E3AE',`${head}<div class="scroll pad"><h1 class="h2">${greet()}</h1>${seg}
-    <div class="empty" style="padding-top:64px"><div class="h2">La barra recién abre</div>En un rato llega más gente.</div></div>
+    ${filtered&&S.all.length?`<div class="empty" style="padding-top:56px"><div class="h2">Por aquí todavía no hay nadie</div>Tu barra se ve más llena con todo Lima.<button class="btn btn-primary" data-a="radius-all" type="button" style="margin-top:20px">Ver todo Lima</button></div>`:`<div class="empty" style="padding-top:64px"><div class="h2">La barra recién abre</div>En un rato llega más gente.</div>`}</div>
     ${tabsbar('personas')}`);
   const list=S.deck;const nx=list.length>1?list[(S.di+1)%list.length]:null;const d=DR[sig(p.style)];const c=STY[p.style]?.c||'#86E3AE';
   return shell('',c,`${head}
   <div class="scroll pad">
     <h1 class="h2">${greet()}</h1>${seg}
-    <div class="deck tall ${seg?'seg2':''}">
+    <div class="deck tall ${S.rondasOff?'seg1':'seg2'}">
       ${nx?`<div class="pcard behind"><img src="${img(sig(nx.style))}" alt=""></div>`:''}
       <div class="pcard" id="pcard" data-a="open-person" role="button" tabindex="0" aria-label="Ver a ${esc(p.name)}">
         <img src="${img(sig(p.style))}" alt="">
@@ -459,7 +499,7 @@ salud:()=>{const s=S.salud;const d=DR[s.drink];const p=S.people[s.peer]||{};cons
 
 chat:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m)return V.actividad();const pid=peerOf(m);const p=S.people[pid]||{};const d=DR[m.drink];const list=S.msgs[m.id]||[];const ph=(S.photos[pid]||[])[0];
   return shell('',d.c,`<div class="chathead pad"><button class="iconbtn" data-a="back" aria-label="Volver" type="button">${I('back')}</button><button type="button" class="avbtn" data-a="sheet" data-v="photo" aria-label="Ver foto">${photoAv(ph,p,40)}</button><div class="grow"><b>${esc(first(p.name))}${p.age?', '+p.age:''}</b><span>${esc(p.district||'')}</span></div>
-    ${m.closed?'':`<button class="iconbtn glass" data-a="plan-new" type="button" aria-label="Proponer salida">${I('cal')}</button>`}<button class="iconbtn glass" data-a="sheet" data-v="chatmenu" type="button" aria-label="Más opciones">${I('dots')}</button></div>
+    ${m.closed?'':`<button class="iconbtn glass" data-a="call" type="button" aria-label="${callOK(m)?'Llamada de brindis':'Llamada bloqueada'}" style="color:var(--${callOK(m)?'gold':'dim'})">${I(callOK(m)?'phone':'lock')}</button><button class="iconbtn glass" data-a="plan-new" type="button" aria-label="Proponer salida">${I('cal')}</button>`}<button class="iconbtn glass" data-a="sheet" data-v="chatmenu" type="button" aria-label="Más opciones">${I('dots')}</button></div>
   <div class="scroll pad"><div class="msgs" id="msgs">${chatBody(m)}</div></div>
   ${m.closed?'':`<div class="composer pad" id="composer">${composer()}</div>`}`);},
 
@@ -500,6 +540,16 @@ plan:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m)return V.actividad();co
   </div>
   <div class="foot pad"><button class="btn btn-ghost" data-a="row" data-v="sheet:ronda-close" type="button">Cerrar mi ronda</button></div>`);},
 
+call:()=>{const C=CALL;const m=C&&S.matches.find(x=>x.id===C.match);if(!m)return V.actividad();const p=S.people[C.peer]||{};const d=DR[m.drink];const inc=C.state==='incoming';const live2=C.state==='live';
+  return `<section class="screen call pad" style="--glow:${d.c};padding-block:20px 26px">
+  <span class="eyebrow" style="color:var(--gold)">Llamada de brindis · solo voz</span>
+  <div class="callav ${live2?'quiet2':''}">${photoAv((S.photos[C.peer]||[])[0],p,150)}</div>
+  <h1 class="display" style="margin-top:24px;font-size:34px">${first(p.name)}</h1>
+  <div class="calltime ${live2?'':'wait'}" id="calltime" aria-live="polite">${live2?callClock():inc?'Te invita a una llamada':C.state==='ringing'?'Llamando…':'Conectando…'}</div>
+  ${live2?'<p class="small muted" style="max-width:28ch;margin:6px auto 0">Tienen 10 minutos para conocerse por voz.</p>':''}
+  <div class="callctl">${inc?`<button type="button" data-a="call-no"><span class="c">${I('x')}</span>Ahora no</button><button type="button" data-a="call-yes"><span class="c on">${I('phone')}</span>Contestar</button>`:`<button type="button" data-a="call-mute" aria-pressed="${C.mute}"><span class="c ${C.mute?'on':''}">${I('mute')}</span>Silenciar</button><button type="button" data-a="call-end"><span class="c end">${I('phone')}</span>Colgar</button>`}</div>
+</section>`;},
+
 bar:()=>{const t=S.barTab;let body='';
   if(t==='carta'){const card=k=>{const d=DR[k];const have=(S.me.inv||{})[k];return `<button type="button" class="dcard" style="--c:${d.c}" data-a="want" data-v="${k}"><div class="im"><img src="${img(k)}" alt="" loading="lazy">${tier(d.tier)}${have>1?`<span class="cnt">x${have}</span>`:''}</div><div class="tx"><b>${d.n}</b><div class="tg">${d.t}</div><div class="pr">${have?'En tu barra':money(PRICE[d.tier])}</div></div></button>`;};
     body=Object.keys(STY).map(sk=>{const sy=STY[sk];const ks=Object.keys(DR).filter(k=>DR[k].s===sk).sort((a,b)=>DR[a].tier-DR[b].tier);return `<div class="sec"><div class="stylehead" style="--c:${sy.c}"><img src="${img(sy.img)}" alt=""><div style="flex:1;min-width:0"><b>${sk}</b><span>${sy.d}</span></div></div><div class="hscroll">${ks.map(card).join('')}</div></div>`;}).join('')
@@ -523,7 +573,7 @@ perfil:()=>{const u=S.me;const s=STY[u.style]||STY.Mystery;const ph=S.myPhoto?.u
     ${S.matches.length||S.nrecv?`<div class="sec stats"><div class="card stat"><b>${S.nrecv}</b><span>Tragos recibidos</span></div><div class="card stat"><b>${S.matches.length}</b><span>Brindis</span></div><div class="card stat"><b>${u.cheers||0}</b><span>Te aceptaron</span></div></div>`:''}
     ${S.matches.length?`<div class="sec"><span class="eyebrow">Tu colección</span><div class="coll">${[...new Set(S.matches.map(m=>m.drink))].slice(0,8).map(k=>`<img src="${img(k)}" alt="${DR[k].n}">`).join('')}</div></div>`:''}
     <div class="sec card list">
-      ${[['shield','Términos y privacidad','sheet:terms'],['out','Cerrar sesión','logout'],['x','Eliminar mi cuenta','sheet:delete']].filter(Boolean).map(([ic,l,a])=>`<button type="button" class="row" data-a="row" data-v="${a}">${I(ic)}<span class="grow"><b style="font-weight:500">${l}</b></span><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg></button>`).join('')}
+      ${[['bell','Avisos','sheet:notifs'],['shield','Términos y privacidad','sheet:terms'],['out','Cerrar sesión','logout'],['x','Eliminar mi cuenta','sheet:delete']].filter(Boolean).map(([ic,l,a])=>`<button type="button" class="row" data-a="row" data-v="${a}">${I(ic)}<span class="grow"><b style="font-weight:500">${l}</b></span><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg></button>`).join('')}
     </div>
     <p class="small dim" style="text-align:center;margin-top:18px">Martini beta · Lima</p>
     <div style="height:20px"></div>
@@ -537,7 +587,7 @@ function voiceBlock(key,v,c){const max=key==='chat'?MAXC:MAXV;
   return `<button class="recbtn" data-a="rec" data-v="${key}" type="button" aria-label="Grabar">${I('mic')}</button><div class="small dim" style="margin-top:10px">Toca para grabar</div>`;}
 
 function msg(m){const me=m.sender===uid();const f=me?'me':'them';const st=m.pending?' sending':m.failed?' failed':'';const pl=PL(m.body);
-  if(pl&&pl.k!=='plan'){const mt=S.matches.find(x=>x.id===m.match_id);const pn=mt?first((S.people[peerOf(mt)]||{}).name):'';return `<div class="sys">${pl.k==='ok'?(me?'Confirmaste la salida':`${pn} confirmó la salida`):'La salida quedó para otro día'}</div>`;}
+  if(pl&&pl.k!=='plan'){const mt=S.matches.find(x=>x.id===m.match_id);const pn=mt?first((S.people[peerOf(mt)]||{}).name):'';return `<div class="sys">${pl.k==='call'?I('phone','s')+' Llamada de brindis':pl.k==='ok'?(me?'Confirmaste la salida':`${pn} confirmó la salida`):'La salida quedó para otro día'}</div>`;}
   if(pl){const ps=planState(S.msgs[m.match_id]||[],m.id);return `<div class="m ${f}${st}" ${m.failed?`data-a="retry" data-v="${m.id}"`:''}><div class="plan"><div class="ph"><span class="eyebrow">Propuesta de salida</span><b>${esc(pl.type)}</b></div><div class="pb"><div>${I('pin','s')} ${esc(pl.place)}</div><div>${I('cal','s')} ${whenTxt(pl.when)}</div>${ps==='ok'?`<div style="color:var(--mint)">${I('check','s')} Confirmada</div>`:!ps&&me&&!m.failed?'<div class="dim">Esperando su respuesta</div>':''}</div>
     ${ps==='ok'?`<div class="pacts"><button type="button" class="btn btn-glass btn-sm" data-a="plan-share" data-v="${m.id}">${I('shield','s')} Avisar a un contacto</button></div>`:!ps&&!me?`<div class="pacts two"><button type="button" class="btn btn-glass btn-sm" data-a="plan-ans" data-v="no" data-id="${m.id}">Otro día</button><button type="button" class="btn btn-primary btn-sm" data-a="plan-ans" data-v="ok" data-id="${m.id}">Me apunto</button></div>`:''}</div>${m.failed?'<span class="mfail">No se envió. Toca para reintentar.</span>':''}</div>`;}
   if(m.voice)return `<div class="m ${f}${st}" ${m.failed?`data-a="retry" data-v="${m.id}"`:''}>${vn(m.voice,m.voice_secs,m.voice_peaks,me,'chat')}${m.failed?'<span class="mfail">No se envió. Toca para reintentar.</span>':''}</div>`;
@@ -561,6 +611,13 @@ const SHEETS={
   bio:()=>sheet('Tu frase',`<div class="h2" style="font-size:var(--t-head-l)">Tu frase</div><div class="field area" style="margin-top:14px"><textarea id="biof" maxlength="120" rows="3" placeholder="Algo que dirías en la barra…">${esc(S.me.bio||'')}</textarea></div><div class="foot" style="padding-inline:0"><button class="btn btn-primary" data-a="save-bio" type="button">Guardar</button>${cancel()}</div>`),
   delete:()=>sheet('Eliminar cuenta',`<div class="h2" style="font-size:var(--t-head-l)">¿Eliminar tu cuenta?</div><p class="small muted" style="margin:8px 0 0">Se borran tu perfil, tus tragos y tus chats. No se puede deshacer.</p><div class="foot" style="padding-inline:0"><button class="btn btn-glass danger" data-a="delete-go" type="button">Eliminar</button>${cancel('Me quedo')}</div>`),
   'ronda-close':()=>{const R=S.myRonda||{};return sheet('Cerrar ronda',`<div class="h2" style="font-size:var(--t-head-l)">¿Cerrar tu ronda?</div><p class="small muted" style="margin:8px 0 0">Tu ${DR[R.drink]?DR[R.drink].n:'trago'} vuelve a tu barra. A quienes se apuntaron no les llega ningún aviso.</p><div class="foot" style="padding-inline:0"><button class="btn btn-glass" data-a="ronda-close" type="button">Cerrar ronda</button>${cancel('Sigue abierta')}</div>`);},
+  radio:()=>sheet('A quiénes ves',`<div class="h2" style="font-size:var(--t-head-l)">¿A quiénes quieres ver?</div><p class="small muted" style="margin:6px 0 14px">Tú decides qué tan lejos.</p>
+    <div class="stack">${Object.entries(RAD).map(([k,[l,t]])=>{const n=S.all.filter(p=>zoneOK(p.district,k)).length;return `<button type="button" class="opt ${S.radius===k?'on':''}" data-a="radius" data-v="${k}" aria-pressed="${S.radius===k}"><span class="radio"></span><span style="flex:1"><b>${l}</b><span>${t} · ${n===1?'1 persona':n+' personas'}</span></span></button>`;}).join('')}</div>
+    <div class="sec"><span class="eyebrow">Estilo</span><div class="chips">${['',...Object.keys(STY)].map(k=>`<button type="button" class="chip ${S.fstyle===k?'on':''}" data-a="fstyle" data-v="${k}" aria-pressed="${S.fstyle===k}">${k||'Todos'}</button>`).join('')}</div></div>
+    <div class="foot" style="padding-inline:0">${cancel('Listo')}</div>`),
+  notifs:()=>{const N=window.Notification;const st=!N?'no':N.permission;const on=st==='granted'&&LS.get('notif',true);return sheet('Avisos',`<div class="h2" style="font-size:var(--t-head-l)">Avisos</div><p class="small muted" style="margin:6px 0 4px">Te avisamos lo importante, sin llenarte el celular.</p>
+    ${st==='no'?`<div class="note" style="margin-top:14px">${I('bell')}<span>${isIOS&&!standalone?'En iPhone, primero agrega Martini a tu pantalla de inicio.':'Este navegador no permite avisos.'}</span></div>`:st==='denied'?`<div class="note" style="margin-top:14px">${I('bell')}<span>Los avisos están bloqueados. Actívalos en los ajustes de tu navegador.</span></div>`:`<button type="button" class="toggle" data-a="ntog"><span class="grow"><b>Invitaciones, brindis y mensajes</b><span>Cuando Martini queda abierta en segundo plano</span></span><span class="sw ${on?'on':''}"></span></button>`}
+    <div class="note" style="margin-top:14px">${I('lock')}<span>El aviso nunca dice quién te invitó ni qué trago. Eso lo ves dentro de la app.</span></div><div class="foot" style="padding-inline:0">${cancel('Listo')}</div>`);},
   install:()=>sheet('Instalar',`<div class="h2" style="font-size:var(--t-head-l)">Ten la barra a un toque</div>
     <div class="card howto" style="margin-top:14px">${isIOS?`<div>${I('share')}<span>En Safari, toca <b>Compartir</b>.</span></div><div>${I('plus')}<span>Elige <b>Agregar a inicio</b>.</span></div>`:`<div>${I('dots')}<span>Abre el menú del navegador.</span></div><div>${I('plus')}<span>Toca <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>.</span></div>`}</div>
     <div class="foot" style="padding-inline:0">${S.installEvt?`<button class="btn btn-primary" data-a="install-go" type="button">Instalar</button>`:''}${cancel('Entendido')}</div>`)
@@ -573,7 +630,7 @@ async function loadPeople(ids,force){ids=[...new Set(ids)].filter(i=>i&&(force||
 async function loadPhotosOf(ids){ids=[...new Set(ids)].filter(Boolean);if(!ids.length)return;const {data}=await sb.from('photos').select('owner,path,pos').in('owner',ids).order('pos');const by={};(data||[]).forEach(r=>(by[r.owner]=by[r.owner]||[]).push(r.path));
   await Promise.all(ids.map(async id=>{S.photos[id]=await signed('photos',by[id]||[]);}));}
 async function loadDeck(){const {data,error}=await sb.rpc('discover');if(error)throw error;const seen=LS.get('seen',[]);
-  S.deck=(data||[]).map((p,i)=>({p,i,s:seen.indexOf(p.id)})).sort((a,b)=>(a.s-b.s)||(a.i-b.i)).map(x=>x.p);S.di=0;S.looped=false;signed('voice',S.deck.map(p=>p.intro_voice));}
+  S.all=(data||[]).map((p,i)=>({p,i,s:seen.indexOf(p.id)})).sort((a,b)=>(a.s-b.s)||(a.i-b.i)).map(x=>x.p);const f=LS.get('filter',{});S.radius=RAD[f.r]?f.r:'lima';S.fstyle=STY[f.s]?f.s:'';S.deck=[];applyFilter();signed('voice',S.all.map(p=>p.intro_voice));}
 async function loadInvites(){const [r,s]=await Promise.all([
   sb.from('invites').select('*').eq('to_id',uid()).eq('status','pending').order('created_at',{ascending:false}),
   sb.from('invites').select('*').eq('from_id',uid()).order('created_at',{ascending:false}).limit(60)]);
@@ -613,16 +670,17 @@ function subscribe(){if(channel)sb.removeChannel(channel);
   channel=sb.channel('me-'+uid())
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'invites',filter:`to_id=eq.${uid()}`},async({new:r})=>{await loadPeople([r.from_id]);if(r.voice)signed('voice',[r.voice]);S.recv=[r,...S.recv.filter(x=>x.id!==r.id)];banner('Martini','Alguien quiere brindar contigo','go-act','recibidas');if(live.includes(S.screen))rerender();})
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'matches',filter:`a=eq.${uid()}`},async({new:m})=>{if(m.ronda_id||S.matches.some(x=>x.id===m.id))return;S.matches.unshift(m);const pid=peerOf(m);await Promise.all([loadPeople([pid]),loadPhotosOf([pid]),loadMe()]);const s=S.sent.find(x=>x.id===m.invite_id);if(s)s.status='accepted';
-    if(['record','pick','sent','salud'].includes(S.screen)||S.busy){S.saludQ.push(m.id);const p=S.people[pid]||{};banner('¡Salud!',`${first(p.name)} aceptó tu ${DR[m.drink].n}`,'open-salud',m.id);}else showSalud(m.id);})
+    if(['record','pick','sent','salud','call'].includes(S.screen)||S.busy){S.saludQ.push(m.id);const p=S.people[pid]||{};banner('¡Salud!',`${first(p.name)} aceptó tu ${DR[m.drink].n}`,'open-salud',m.id);}else showSalud(m.id);})
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'matches',filter:`b=eq.${uid()}`},async({new:m})=>{if(!m.ronda_id||S.matches.some(x=>x.id===m.id))return;S.matches.unshift(m);const pid=peerOf(m);await Promise.all([loadPeople([pid]),loadPhotosOf([pid])]);S.rondas=S.rondas.filter(r=>r.id!==m.ronda_id);
-    if(['record','pick','sent','salud','ronda-new','plan'].includes(S.screen)||S.busy){S.saludQ.push(m.id);banner('¡Salud!',`${first((S.people[pid]||{}).name)} te eligió en su ronda`,'open-salud',m.id);}else showSalud(m.id);})
+    if(['record','pick','sent','salud','ronda-new','plan','call'].includes(S.screen)||S.busy){S.saludQ.push(m.id);banner('¡Salud!',`${first((S.people[pid]||{}).name)} te eligió en su ronda`,'open-salud',m.id);}else showSalud(m.id);})
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'apuntes'},async({new:a})=>{if(a.user_id===uid()||!S.myRonda||a.ronda_id!==S.myRonda.id)return;try{await loadMyRonda();}catch(e){return;}
     if(S.screen==='ronda-mine'){hap(8);rerender();}else{banner('Martini','Alguien se apuntó a tu ronda','go','ronda-mine');if(live.includes(S.screen))rerender();}})
-  .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async({new:x})=>{const m=S.matches.find(y=>y.id===x.match_id);if(!m)return;
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async({new:x})=>{const m=S.matches.find(y=>y.id===x.match_id);if(!m)return;const ring=(PL(x.body)||{}).k==='call';
+    if(ring&&x.sender!==uid()&&!m.closed&&Date.now()-new Date(x.created_at)<45000)callIncoming(m);
     if(x.voice)await signed('voice',[x.voice]);
     const l=S.msgs[x.match_id];if(l){if(l.some(y=>y.id===x.id))return;const tmp=l.findIndex(y=>y.pending&&y.sender===x.sender&&(y.body||null)===(x.body||null)&&!!y.voice===!!x.voice);if(tmp>=0&&x.sender===uid())return;l.push(x);}m.last=x;
     if(S.screen==='chat'&&S.chat===x.match_id){markRead(x.match_id);appendMsgs();if(x.sender!==uid())hap(8);}
-    else if(x.sender!==uid()){const p=S.people[x.sender]||{};banner(first(p.name)||'Martini',x.voice?'Te envió una nota de voz':preview(x),'open-chat',x.match_id);if(live.includes(S.screen))rerender();}})
+    else if(x.sender!==uid()&&!ring){const p=S.people[x.sender]||{};banner(first(p.name)||'Martini',x.voice?'Te envió una nota de voz':preview(x),'open-chat',x.match_id);if(live.includes(S.screen))rerender();}})
   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'matches'},({new:m})=>{const o=S.matches.find(y=>y.id===m.id);if(o){o.closed=m.closed;if(S.screen==='chat'&&S.chat===m.id)rerender();}})
   .subscribe();}
 const scrollChat=()=>{const s=$app.querySelector('.screen:not(.ghost) .scroll');if(s)s.scrollTop=s.scrollHeight;};
@@ -635,7 +693,7 @@ async function startRec(key){
   const ok=await recStart(MAXV,(t,s)=>paintLive(t,s,MAXV),()=>A.rec(key));
   if(!ok){set(null);rerender();}}
 async function finishRec(key){const r=await recStop();if(key==='inv')S.voice=r;else if(key==='ronda'){if(S.R)S.R.voice=r;}else S.D.intro=r;rerender();}
-const removeFromDeck=id=>{const i=S.deck.findIndex(x=>x.id===id);if(i<0)return;S.deck.splice(i,1);if(S.di>i)S.di--;if(S.deck.length)S.di=S.di%S.deck.length;else S.di=0;};
+const removeFromDeck=id=>{S.all=S.all.filter(x=>x.id!==id);const i=S.deck.findIndex(x=>x.id===id);if(i<0)return;S.deck.splice(i,1);if(S.di>i)S.di--;if(S.deck.length)S.di=S.di%S.deck.length;else S.di=0;};
 
 const A={
   back:()=>back(),
@@ -668,6 +726,15 @@ const A={
     try{if(navigator.share){await navigator.share({text});return;}}catch(e){return;}
     window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');},
   checkin:(v,el)=>{const d=LS.get('checkin',{});d[el.dataset.id]=v;LS.set('checkin',d);appendMsgs();toast(v==='great'?'¡Qué bueno! Ojalá se repita.':v==='bad'?'Gracias por contarnos. Tu seguridad es primero.':'Gracias por contarnos. Queda entre nosotros.',v==='great'?'glass':'shield');},
+  radius:v=>{S.radius=v;LS.set('filter',{r:S.radius,s:S.fstyle});applyFilter();rerender();},
+  fstyle:v=>{S.fstyle=v;LS.set('filter',{r:S.radius,s:S.fstyle});applyFilter();rerender();},
+  'radius-all':()=>{S.radius='lima';S.fstyle='';LS.set('filter',{r:'lima',s:''});applyFilter();rerender();},
+  ntog:async()=>{const N=window.Notification;if(!N)return;if(N.permission!=='granted'){const r=await N.requestPermission();LS.set('notif',r==='granted');}else LS.set('notif',!LS.get('notif',true));rerender();},
+  call:()=>{const m=S.matches.find(x=>x.id===S.chat);if(!m||m.closed)return;if(!callOK(m))return toast('La llamada se abre cuando los dos se hayan enviado una nota de voz','lock');callStart(m);},
+  'call-yes':async()=>{const C=CALL;if(!C||C.state!=='incoming')return;C.state='connecting';rerender();const st=await callMic();if(CALL!==C){st&&st.getTracks().forEach(t=>t.stop());return;}if(!st){callEnd();return;}C.stream=st;clearTimeout(C.to);C.to=setTimeout(()=>{if(CALL===C&&C.state!=='live')callEnd('No se pudo conectar la llamada. Prueben con otra red.');},25000);callSig({k:'ready'});},
+  'call-no':()=>callEnd(),
+  'call-end':()=>callEnd(),
+  'call-mute':()=>{const C=CALL;if(!C||!C.stream)return;C.mute=!C.mute;C.stream.getAudioTracks().forEach(t=>{t.enabled=!C.mute;});rerender();},
   'to-onb':()=>{S.ob=0;go('onboarding',false);},
   'ob-next':()=>{if(S.ob<OB.length-1){S.ob++;rerender();}else{S.auth='signup';S.authStep=S.code?'account':'code';go('auth');}},
   'ob-go':v=>{S.ob=+v;rerender();},
@@ -802,7 +869,7 @@ document.addEventListener('submit',async e=>{e.preventDefault();const f=e.target
 
 /* Gestos: volver desde el borde y deslizar la tarjeta */
 let sx=0,sy=0,edge=false,drag=null,swallow=false;
-$ph.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;edge=sx<24&&S.stack.length>0&&S.screen!=='salud';const c=e.target.closest('#pcard');drag=c&&!e.target.closest('.vn')?{c,x:0}:null;},{passive:true});
+$ph.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;edge=sx<24&&S.stack.length>0&&S.screen!=='salud'&&S.screen!=='call';const c=e.target.closest('#pcard');drag=c&&!e.target.closest('.vn')?{c,x:0}:null;},{passive:true});
 $ph.addEventListener('touchmove',e=>{if(!drag)return;const t=e.touches[0];const dx=t.clientX-sx,dy=t.clientY-sy;if(!drag.x&&Math.abs(dy)>Math.abs(dx))return;drag.x=dx;drag.c.style.transition='none';drag.c.style.transform=`translateX(${dx}px) rotate(${dx/22}deg)`;},{passive:true});
 $ph.addEventListener('touchend',e=>{const t=e.changedTouches[0];const dx=t.clientX-sx;
   if(edge&&dx>70&&Math.abs(t.clientY-sy)<60){edge=false;back();return;}

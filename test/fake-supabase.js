@@ -1,10 +1,17 @@
 // Cliente falso en memoria para la prueba de humo de la interfaz.
-(()=>{const ME='me-1',PX='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#a86"/><circle cx="200" cy="200" r="90" fill="#fdc"/></svg>');
+(()=>{const U=new URLSearchParams(location.search).get('u');const ME=U?'me-'+U:'me-1',PX='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#a86"/><circle cx="200" cy="200" r="90" fill="#fdc"/></svg>');
 const db={session:null,profiles:[],photos:[],matches:[],messages:[],rondas:[],apuntes:[],
  invites:[{id:'i1',from_id:'p3',to_id:ME,drink:'mars',voice:'p3/v.m4a',voice_secs:9,voice_peaks:null,status:'pending',hidden:false,created_at:new Date(Date.now()-40*36e5).toISOString()}],
  people:[{id:'p1',name:'Fabiola',age:29,gender:'Mujer',district:'Barranco',style:'Mystery',bio:'Fiesta, fiesta y fiesta. Libre pensadora.',veil:PX,intro_voice:'p1/i.m4a',intro_secs:11,intro_peaks:null},
   {id:'p2',name:'Andrea',age:27,gender:'Mujer',district:'San Isidro',style:'Golden',bio:'Brunch los domingos, karaoke los jueves.',veil:null,intro_voice:null},
   {id:'p3',name:'Daniela',age:28,gender:'Mujer',district:'Miraflores',style:'Romantic',bio:'Jazz y discos.',veil:PX}]};
+if(U){const O=U==='a'?'me-b':'me-a';const t=new Date(Date.now()-6e5).toISOString();db.session={user:{id:ME}};db.invites=[];
+ db.profiles.push({id:ME,name:U==='a'?'Miguel':'Lucía',birth:'1992-03-03',gender:'Hombre',interest:'Todos',district:'Miraflores',style:'Mystery',bio:'',inv:{heaven:1},cheers:0,water_day:null});
+ db.people=[{id:O,name:U==='a'?'Lucía':'Miguel',age:30,gender:'Mujer',district:'Barranco',style:'Golden',bio:'',veil:PX}];db.photos.push({owner:O,path:O+'/p.jpg',pos:0});
+ db.matches.push({id:'mc',a:'me-a',b:'me-b',drink:'heaven',invite_id:'x',closed:false,crossed:false,gift:null,created_at:t});
+ db.messages.push({id:'c1',match_id:'mc',sender:'me-a',voice:'a/v.m4a',voice_secs:5,body:null,created_at:t},{id:'c2',match_id:'mc',sender:'me-b',voice:'b/v.m4a',voice_secs:6,body:null,created_at:t});
+ localStorage.setItem('martini-salud','["mc"]');}
+const BC=new BroadcastChannel('fake');const subs=[];BC.onmessage=e=>subs.forEach(f=>f(e.data));
 window.__db=db;const ok=d=>Promise.resolve({data:d,error:null});
 function q(t){let rows=(db[t]||[]).slice(),op='select',payload,single=false;const f=[];
  const b={select(){return b;},insert(p){op='insert';payload=p;return b;},update(p){op='update';payload=p;return b;},delete(){op='delete';return b;},
@@ -12,7 +19,7 @@ function q(t){let rows=(db[t]||[]).slice(),op='select',payload,single=false;cons
   maybeSingle(){single=true;return b;},single(){single=true;return b;},
   then(res,rej){let out;
    if(op==='insert'){const arr=(Array.isArray(payload)?payload:[payload]).map(p=>({id:'n'+Math.random(),created_at:new Date().toISOString(),...p}));
-     if(t==='profiles')arr.forEach(p=>{p.inv={heaven:1,vendetta:1,sunshine:1};p.cheers=0;p.water_day=null;});db[t].push(...arr);out=single?arr[0]:arr;}
+     if(t==='profiles')arr.forEach(p=>{p.inv={heaven:1,vendetta:1,sunshine:1};p.cheers=0;p.water_day=null;});db[t].push(...arr);out=single?arr[0]:arr;if(U&&t==='messages')arr.forEach(r=>BC.postMessage({pg:t,row:r}));}
    else if(op==='update'){rows.filter(r=>f.every(x=>x(r))).forEach(r=>Object.assign(db[t].find(z=>z===r)||r,payload));out=null;}
    else if(op==='delete'){db[t]=db[t].filter(r=>!f.every(x=>x(r)));out=null;}
    else{rows=rows.filter(r=>f.every(x=>x(r)));if(t==='invites')rows=rows.filter(r=>r.to_id!==ME||!r.hidden);if(t==='matches')rows=rows;out=single?(rows[0]||null):rows;}
@@ -36,4 +43,6 @@ window.supabase={createClient:()=>({
   signInWithPassword:()=>{db.session={user:{id:ME}};return ok({session:db.session});}},
  from:q,rpc:(n,a)=>ok(rpcs[n](a||{})),
  storage:{from:()=>({createSignedUrls:ps=>ok(ps.map(p=>({path:p,signedUrl:PX}))),upload:()=>ok({}),remove:()=>ok({})})},
- channel:()=>{const c={on:()=>c,subscribe:()=>c};return c;},removeChannel(){}})};})();
+ channel:name=>{const hs=[];const fn=d=>{if(d.pg)hs.filter(h=>h.t==='postgres_changes'&&h.o.table===d.pg&&h.o.event==='INSERT').forEach(h=>h.cb({new:d.row}));else if(d.ch===name)hs.filter(h=>h.t==='broadcast'&&h.o.event===d.event).forEach(h=>h.cb({payload:d.payload}));};
+   const c={on:(t,o,cb)=>{hs.push({t,o,cb});return c;},subscribe:cb=>{subs.push(fn);c._fn=fn;setTimeout(()=>cb&&cb('SUBSCRIBED'),30);return c;},send:m=>{BC.postMessage({ch:name,event:m.event,payload:JSON.parse(JSON.stringify(m.payload))});return Promise.resolve('ok');}};return c;},
+ removeChannel(c){const i=subs.indexOf(c._fn);if(i>=0)subs.splice(i,1);}})};})();
